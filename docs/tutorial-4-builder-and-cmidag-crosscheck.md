@@ -8,6 +8,8 @@ By the end you will:
 
 - Build a DAG with named nodes via `GaussianDAG` and see it produce the same
   result as the functional core.
+- Numerically verify your own symbolic results in PyTorch — value (`.check`) and
+  gradient (`.check_gradient`) — with no extra setup.
 - Understand how the test suite drives the real `cmi-dag` as an oracle.
 - Know how to run the cmi-dag cross-validation battery yourself.
 
@@ -43,7 +45,45 @@ users get readable named output.
 
 ---
 
-## 2. Cross-validation against the real cmi-dag
+## 2. Verify your own result (PyTorch, no extra setup)
+
+You can numerically verify any symbolic result yourself — this is the
+PyTorch-main path and needs nothing beyond `uv sync` (torch is a core
+dependency). Take a precoder model `Y = (H F) X0 + X1 + N` and study
+`I(X0; Y | X1)`:
+
+```python
+import sympy as sp
+from sympy import Identity, MatrixSymbol
+from symbolic_dag import (
+    compute_k_blocks_multiroot, conditional_mutual_information_from_k, hermitian,
+)
+
+d = sp.Symbol("d", positive=True, integer=True)
+H, F = MatrixSymbol("H", d, d), MatrixSymbol("F", d, d)
+S0, R = hermitian("Sigma_0", d), hermitian("R", d)
+
+K = compute_k_blocks_multiroot(
+    num_nodes=3, roots=[0, 1], parents={2: [0, 1]},
+    edge_mats={(2, 0): H * F, (2, 1): Identity(d)},
+    root_covs={0: S0, 1: Identity(d)}, noise_covs={2: R},
+)
+I = conditional_mutual_information_from_k(K, A=[0], B=[2], C=[1])
+
+print(I.check(dim=3))              # the CMI value
+#   {'passed': True, 'max_abs_err': ~1e-14, 'samples': 4}
+print(I.check_gradient(F, dim=3))  # the Wirtinger gradient
+#   {'passed': True, 'max_abs_err': ~1e-13}
+```
+
+`.check` recomputes the CMI the same way `cmi-dag` does — multi-root K-recursion +
+Schur complement + `slogdet` — on random complex points and confirms your closed
+form agrees. `.check_gradient` differentiates the *very same* torch CMI with
+PyTorch autograd and checks `autograd == 2 · ∂I/∂F*` (the Wirtinger convention).
+No cmi-dag checkout is needed for either. (A torch-free `numpy_cmi` oracle is also
+available for a fully independent cross-check, but PyTorch is the main path.)
+
+## 3. Cross-validation against the real cmi-dag
 
 Every symbolic result is verified two ways:
 
@@ -64,7 +104,7 @@ rest of the suite (including the PyTorch self-checks) still runs.
 
 ---
 
-## 3. Run the battery
+## 4. Run the battery
 
 ```bash
 uv run pytest        # full suite: symbolic + PyTorch self-checks + cmi-dag cross-validation
@@ -87,7 +127,7 @@ the other.
 
 ---
 
-## 4. Where to go next
+## 5. Where to go next
 
 - The `examples/` directory has the polished, runnable versions:
   `gadgets.py`, `mac_cmi.py`, and `precoder_gradient.py`.

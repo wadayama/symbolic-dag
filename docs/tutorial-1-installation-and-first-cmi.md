@@ -102,21 +102,36 @@ is what later lets us *prove* identities (Tutorial 2).
 ## 4. Check it numerically (PyTorch, one call)
 
 `symbolic-dag` is PyTorch-oriented for its numerics (aligned with its numerical
-sibling `cmi-dag`). The simplest way to verify a symbolic CMI is one call: it
-draws a random complex point at a concrete dimension, evaluates the CMI in
-PyTorch, and compares it against an independent computation.
+sibling `cmi-dag`). The simplest way to verify a symbolic CMI is one call —
+`I.check(dim)` draws random complex points at a concrete dimension and confirms
+the symbolic closed form agrees with an **independent numerical evaluation**: the
+very same multi-root K-recursion + Schur-complement + `slogdet` recipe that
+`cmi-dag` itself uses. Passing it means your closed form matches the numerical
+answer.
 
 ```python
 print(I.check(dim=2))
-#   {'passed': True, 'max_abs_err': 1.8e-14, 'samples': 4}
+#   {'passed': True, 'max_abs_err': ~1e-14, 'samples': 4}
 ```
 
-Under the hood, `to_torch` lowers the symbolic CMI to a **differentiable** torch
-scalar, so `I.torch_value(subs, dim)` also drops straight into your own PyTorch
-experiments and autograd (used for the gradient checks in Tutorial 3).
+To see the actual value — or to plug in your own matrices — lower the CMI to a
+torch scalar and evaluate it at a concrete point:
 
-> The library also ships a torch-free NumPy oracle (`numpy_cmi`) used internally
-> as an extra independent cross-check; you rarely need it directly.
+```python
+from symbolic_dag import random_torch_point
+
+subs = random_torch_point(I, dim=2, seed=0)   # random HPD covariances + complex gains
+#   (or supply your own: subs = {A: tA, B: tB, SX: tSX, SY: tSY, SZ: tSZ},
+#    each a complex128 torch tensor)
+print(float(I.torch_value(subs, 2).real))     # the CMI value (nats) at that point
+```
+
+`torch_value` is **differentiable**, so the same symbolic CMI drops straight into
+your own PyTorch experiments and autograd (used for the gradient checks in
+Tutorial 3).
+
+> A torch-free NumPy oracle (`numpy_cmi`) is also available for a fully
+> independent cross-check, but PyTorch is the main numerical path.
 
 ---
 
