@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS cruft
+.DS_Store
+
+# LaTeX build intermediates (figure sources keep .tex/.pdf/.png)
+*.aux
+*.log
+*.out
+
+# Local-only throwaway prototypes (kept locally for provenance, not published)
+smoke/
+smoke_answer/
+smoke_grad/
