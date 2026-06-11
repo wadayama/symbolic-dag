@@ -150,6 +150,25 @@ class SymbolicCMI(RecursiveExpr):
 
         return check(self, dim, **kwargs)
 
+    # ---- hand-off / pretty type-setting ------------------------------
+    def to_mathematica(self, var: sp.MatrixSymbol | None = None, **kwargs) -> str:
+        """Wolfram Language string for the CMI (or its gradient if ``var`` given)."""
+        from symbolic_dag.handoff import to_mathematica
+
+        return to_mathematica(self, var, **kwargs)
+
+    def to_markdown(self, var: sp.MatrixSymbol | None = None, **kwargs) -> str:
+        """Markdown summary (LaTeX math) of the CMI and, if ``var`` given, its gradient/KKT."""
+        from symbolic_dag.handoff import to_markdown
+
+        return to_markdown(self, var, **kwargs)
+
+    def to_pdf(self, path: str, var: sp.MatrixSymbol | None = None, **kwargs) -> str:
+        """Typeset the CMI (and gradient/KKT if ``var``) to a standalone PDF; return its path."""
+        from symbolic_dag.handoff import render_pdf
+
+        return render_pdf(self, path, var=var, **kwargs)
+
     def check_gradient(self, var: sp.MatrixSymbol, dim: int, **kwargs) -> dict:
         """Verify the Wirtinger gradient against PyTorch autograd (``autograd == 2*grad``)."""
         from symbolic_dag.verify import check_gradient

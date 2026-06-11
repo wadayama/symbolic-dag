@@ -83,7 +83,7 @@ require the `cmi-dag` repository to be available locally (a sibling checkout, or
 
 ```
 symbolic-dag/
-├── symbolic_dag/    core library (11 modules)
+├── symbolic_dag/    core library (12 modules)
 ├── tests/           pytest suite (core + cmi-dag cross-validation)
 ├── examples/        runnable scripts
 ├── docs/            tutorial walkthrough
@@ -173,7 +173,7 @@ All symbols below are re-exported from the top-level package.
 | `conditional_covariance(K, U, C)` | `information` | Schur-complement conditional covariance `Σ_{U\|C}` (block-assembled). |
 | `mmse_error_covariance(K, target, observations)` | `information` | LMMSE estimation-error covariance `Σ_{target\|observations}` (single target node, block-free). Its `tr` is the scalar MMSE; differentiate with `trace_grad`. |
 | `lmmse_estimator(K, target, observations)` | `information` | Closed-form Wiener filter `W = Σ_{target,obs}·Σ_{obs,obs}⁻¹` — the MMSE KKT solution; residual is `mmse_error_covariance`. |
-| `SymbolicCMI` | `expr` | Lazy CMI: signed log-det terms + cross conditional covariance. Methods `.simplify(strategy)`, `.is_conditionally_independent()`, `.wirtinger_grad(var)`, `.stationarity(var)`, `.to_expr()`; numerical checks `.check(dim)`, `.check_gradient(var, dim)`, `.torch_value(subs, dim)` (PyTorch), and `.evaluate(subs)` / `.numeric_check(subs, ref)` (NumPy). |
+| `SymbolicCMI` | `expr` | Lazy CMI: signed log-det terms + cross conditional covariance. Methods `.simplify(strategy)`, `.is_conditionally_independent()`, `.wirtinger_grad(var)`, `.stationarity(var)`, `.to_expr()`; numerical checks `.check(dim)`, `.check_gradient(var, dim)`, `.torch_value(subs, dim)` (PyTorch), `.evaluate(subs)` / `.numeric_check(subs, ref)` (NumPy); hand-off `.to_latex()` / `.report()` / `.to_mathematica(var)` / `.to_markdown(var)` / `.to_pdf(path, var)`. |
 | `to_torch(expr, subs, dim)` / `random_torch_point(cmi, dim)` | `verify` | Lower a symbolic matrix expression to a differentiable `torch` tensor; draw a random complex point (covariances Hermitian PD). |
 | `hermitian(name, d)` | `assumptions` | Create a `d×d` Hermitian PD covariance symbol (a `HermitianMatrix`). The engines recognise it and apply `Adjoint(Σ) → Σ`. |
 | `GaussianDAG` | `builder` | Thin named-node builder (`add_source`, `add_node`, `cmi`); lowers to the functional core. |
@@ -182,6 +182,7 @@ All symbols below are re-exported from the top-level package.
 | `trace_grad(M, var)` / `wirtinger_grad_trace(M, F, dF)` | `matderiv` | Closed-form Wirtinger gradient of a **trace objective** `d(tr M)/dvar*` — e.g. an MMSE design `tr(Σ_{X\|Y})`. Autograd returns `2×`. |
 | `solve_stationary(equation, var)` | `solve` | Solve a **linear** matrix stationarity (KKT) equation `equation = 0` for `var` (right-/left-linear, single two-sided term) — e.g. the MMSE/Wiener KKT. Nonlinear (capacity) equations raise. |
 | `cmi_to_latex(cmi)` / `report(cmi, var)` (and `SymbolicCMI.to_latex` / `.report`) | `latex` | LaTeX hand-off: the CMI (structural or expanded), the gradient, and the KKT condition. |
+| `to_mathematica(obj, var=None)` / `to_markdown(cmi, var=None)` / `render_pdf(obj, path, *, var=None, png=False)` | `handoff` | Pretty type-setting of the closed forms for the next step: a **Wolfram Language** string (`Dot`/`ConjugateTranspose`/`Inverse`/`Det`), an **LLM-/human-readable Markdown** summary, and a **standalone PDF/PNG** (via `pdflatex`). |
 | `numpy_cmi(K, A, B, C)` / `numpy_k_blocks(...)` | `numeric` | An independent NumPy CMI oracle for verification. |
 
 ### Conventions

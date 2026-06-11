@@ -25,6 +25,7 @@ from symbolic_dag.information import (
     lmmse_estimator,
     mmse_error_covariance,
 )
+from symbolic_dag.handoff import render_pdf, to_markdown, to_mathematica
 from symbolic_dag.krecursion import compute_k_blocks_multiroot, get_K, hermitianize
 from symbolic_dag.latex import cmi_to_latex, report
 from symbolic_dag.matderiv import (
@@ -58,8 +59,11 @@ __all__ = [
     "numpy_k_blocks",
     "proves_zero",
     "random_torch_point",
+    "render_pdf",
     "simplify_expr",
     "solve_stationary",
+    "to_markdown",
+    "to_mathematica",
     "to_torch",
     "trace_grad",
     "wirtinger_grad_cmi",
