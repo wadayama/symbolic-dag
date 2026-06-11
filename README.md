@@ -177,7 +177,7 @@ All symbols below are re-exported from the top-level package.
 | `hermitian(name, d)` | `assumptions` | Create a `d×d` Hermitian PD covariance symbol (a `HermitianMatrix`). The engines recognise it and apply `Adjoint(Σ) → Σ`. |
 | `GaussianDAG` | `builder` | Thin named-node builder (`add_source`, `add_node`, `cmi`); lowers to the functional core. |
 | `simplify_expr(e, strategy="normalize")` / `proves_zero(e)` | `rewrite` | The strategic rewrite engine: `"normalize"` (structural) or `"capacity"` (with low-rank expansion); `proves_zero` is the d-separation check. |
-| `wirtinger_grad_logdet(M, F, dF)` / `wirtinger_grad_cmi(cmi, F)` | `matderiv` | The matrix/Wirtinger differentiation engine for CMI (arbitrary `A`,`B`,`C` with `A` or `B` single). |
+| `wirtinger_grad_logdet(M, F, dF)` / `wirtinger_grad_cmi(cmi, F)` | `matderiv` | The matrix/Wirtinger differentiation engine for CMI (arbitrary `A`, `B`, `C`; both-multi-node via the MI chain rule). |
 | `trace_grad(M, var)` / `wirtinger_grad_trace(M, F, dF)` | `matderiv` | Closed-form Wirtinger gradient of a **trace objective** `d(tr M)/dvar*` — e.g. an MMSE design `tr(Σ_{X\|Y})`. Autograd returns `2×`. |
 | `cmi_to_latex(cmi)` / `report(cmi, var)` (and `SymbolicCMI.to_latex` / `.report`) | `latex` | LaTeX hand-off: the CMI (structural or expanded), the gradient, and the KKT condition. |
 | `numpy_cmi(K, A, B, C)` / `numpy_k_blocks(...)` | `numeric` | An independent NumPy CMI oracle for verification. |
@@ -287,10 +287,10 @@ See [`examples/README.md`](examples/README.md).
   condition**, handed off via LaTeX (`to_latex`, `report`); the problem-specific
   regime / optimal-structure analysis is intentionally left to the analyst.
   Automated regime-map / threshold solving is out of scope.
-- **Gradients.** The Wirtinger gradient handles arbitrary conditioning `C` and
-  multi-node information sets, as long as `A` or `B` is a single node (the
-  general case via sequential single-node conditioning). Both-multi-node
-  gradients and trace-form (MMSE) objectives are deferred.
+- **Gradients.** The Wirtinger gradient handles arbitrary `A`, `B`, `C` — single-
+  or multi-node, via sequential single-node conditioning and (when both `A` and
+  `B` are multi-node) the mutual-information chain rule — for log-det (CMI) and
+  trace (MMSE) objectives.
 - **Expression growth.** Conditioning on large sets forms a symbolic matrix
   inverse, whose expanded form grows quickly; keep results lazy.
 - **Positive-definiteness.** Conditional covariances must be Hermitian PD for the

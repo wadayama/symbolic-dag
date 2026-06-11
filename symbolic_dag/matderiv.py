@@ -161,15 +161,19 @@ def wirtinger_grad_cmi(cmi, var: MatrixSymbol) -> MatrixExpr:
     where the conditional covariances are built by *sequential single-node
     conditioning* (:func:`symbolic_dag.information.conditional_covariance_seq`),
     so they are single matrix expressions for **arbitrary** conditioning ``C`` ---
-    no block differentiation is needed. This works whenever ``A`` or ``B`` is a
-    single node (the single one is taken as the outer set); both-multi-node is
-    deferred. The Hermitian assumption is imposed and the result is structurally
-    simplified.
+    no block differentiation is needed.
+
+    When ``A`` or ``B`` is a single node, that node is the outer set directly.
+    When **both** are multi-node, the chain rule of mutual information
+
+        I(A;B|C) = sum_i I(a_i; B | a_{<i}, C)            (chain over the smaller set)
+
+    expands the gradient into a sum of single-node terms (each ``a_i`` is the outer
+    set, the rest joins the conditioning), so the same single-node machinery
+    applies and block differentiation is still avoided. The Hermitian assumption is
+    imposed and the result is structurally simplified.
 
     A numerical library's autograd returns ``2 *`` this gradient.
-
-    Raises:
-        NotImplementedError: if both ``A`` and ``B`` are multi-node.
     """
     from symbolic_dag.information import conditional_covariance_seq
     from symbolic_dag.rewrite import simplify_expr
@@ -178,19 +182,26 @@ def wirtinger_grad_cmi(cmi, var: MatrixSymbol) -> MatrixExpr:
     if K is None:
         raise ValueError("SymbolicCMI is missing its K-blocks (metadata['K']).")
     A, B, C = list(cmi.A), list(cmi.B), list(cmi.C)
+    dF = MatrixSymbol("d" + var.name, *var.shape)
     if len(B) == 1:
         outer, inner = B[0], A
     elif len(A) == 1:
         outer, inner = A[0], B
     else:
-        raise NotImplementedError(
-            "Wirtinger gradient requires A or B to be a single node "
-            f"(got |A|={len(A)}, |B|={len(B)}); both-multi-node is deferred."
-        )
+        # Both multi-node: chain rule over the smaller set. Each term has a
+        # single-node outer set, so the single-node log-det gradient applies.
+        chain, other = (B, A) if len(B) <= len(A) else (A, B)
+        chain, other, C_s = sorted(chain), sorted(other), sorted(C)
+        G = ZeroMatrix(*var.shape)
+        for i, node in enumerate(chain):
+            pre = chain[:i]
+            M1 = conditional_covariance_seq(K, node, sorted(pre + C_s))
+            M2 = conditional_covariance_seq(K, node, sorted(pre + other + C_s))
+            G = G + wirtinger_grad_logdet(M1, var, dF) - wirtinger_grad_logdet(M2, var, dF)
+        return simplify_expr(apply_hermitian(G.doit()), "normalize")
 
     M1 = conditional_covariance_seq(K, outer, sorted(C))             # Sigma_{B|C}
     M2 = conditional_covariance_seq(K, outer, sorted(inner + C))     # Sigma_{B|AC}
-    dF = MatrixSymbol("d" + var.name, *var.shape)
     G = (
         wirtinger_grad_logdet(M1, var, dF) - wirtinger_grad_logdet(M2, var, dF)
     ).doit()
