@@ -16,6 +16,7 @@ from sympy import Identity, MatrixSymbol
 from symbolic_dag import (
     compute_k_blocks_multiroot,
     conditional_mutual_information_from_k,
+    from_mathematica,
     hermitian,
     to_markdown,
     to_mathematica,
@@ -49,6 +50,30 @@ def test_to_mathematica_cmi():
     wl = I.to_mathematica()  # the CMI scalar
     assert wl.startswith("Plus[")
     assert "Log[Det[" in wl
+
+
+def test_to_mathematica_scalar():
+    # 1-D point-to-point y = h x + z: scalar export is ready for Integrate/Expectation
+    h = MatrixSymbol("h", DIM, DIM)
+    Q, S = hermitian("Q", DIM), hermitian("s2", DIM)
+    K = compute_k_blocks_multiroot(
+        num_nodes=2, roots=[0], parents={1: [0]},
+        edge_mats={(1, 0): h}, root_covs={0: Q}, noise_covs={1: S},
+    )
+    I = conditional_mutual_information_from_k(K, A=[0], B=[1], C=[])
+    sc = I.to_mathematica(scalar=True)
+    assert "Det[" not in sc and "Dot[" not in sc   # flattened to scalar
+    assert "Conjugate[" in sc and "Log[" in sc
+
+
+def test_from_mathematica_roundtrip():
+    rho = sp.Symbol("rho")
+    expected = float((sp.exp(sp.Rational(1, 4)) * sp.expint(1, sp.Rational(1, 4))).evalf())
+    # both Wolfram spellings of the SISO Rayleigh ergodic capacity map to expint and evaluate
+    for s in ("Exp[1/rho]*ExpIntegralE[1, 1/rho]", "E^(1/rho)*Gamma[0, 1/rho]"):
+        e = from_mathematica(s)
+        assert not e.atoms(sp.core.function.AppliedUndef), f"unmapped function in {e}"
+        assert abs(float(e.subs(rho, 4).evalf()) - expected) < 1e-10
 
 
 def test_to_markdown_sections():

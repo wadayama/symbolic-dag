@@ -68,13 +68,18 @@ A licensed Wolfram/Mathematica install ships `wolframscript`. It is often **not 
 Run code with `wolframscript -code '...'` (each invocation starts a kernel; allow a
 generous timeout). Tips that made simplification work in practice:
 - add assumptions: `FullSimplify[expr, ρ > 0]`, `Assumptions -> ρ > 0` on integrals;
-- for an **ergodic** step, reduce to a scalar/eigenvalue integrand first (human), then
-  `Expectation[Log[1 + ρ g], g \[Distributed] ExponentialDistribution[1]]` (Rayleigh)
-  or `Integrate[Log[1 + ρ λ] p[λ], {λ, 0, ∞}]` with the Wishart/Laguerre density `p`;
+- for an **ergodic** step, get a scalar integrand from the library —
+  `I.to_mathematica(scalar=True)` flattens 1×1 matrices (drops `Det`, `Dot` → `Times`,
+  `ConjugateTranspose` → `Conjugate`); reduce to the eigenvalue density (Wishart→Laguerre)
+  for MIMO (human), then `Expectation[Log[1 + ρ g], g \[Distributed] ExponentialDistribution[1]]`
+  (Rayleigh) or `Integrate[Log[1 + ρ λ] p[λ], {λ, 0, ∞}]`;
 - single-letter Wolfram built-ins (`N D E I K O`) may clash with symbol names — rename.
 
-**Always close the loop:** pull the Wolfram result back and cross-check numerically
-against a Monte-Carlo / `numpy_cmi` value before trusting it.
+**Always close the loop:** bring the Wolfram result back with `from_mathematica(s)`
+(it maps `ExpIntegralE`/`Gamma`/… to `sympy`, so it evaluates) and cross-check
+numerically against a Monte-Carlo / `numpy_cmi` value before trusting it. The full
+loop demonstrated this session: `I.to_mathematica(scalar=True)` → `wolframscript`
+`Expectation` → `from_mathematica` → `.evalf()` == MC (SISO Rayleigh → `e^{1/ρ}E₁(1/ρ)`).
 
 ## Worked recipes (validated in practice)
 

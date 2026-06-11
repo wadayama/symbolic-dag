@@ -25,7 +25,12 @@ from symbolic_dag.information import (
     lmmse_estimator,
     mmse_error_covariance,
 )
-from symbolic_dag.handoff import render_pdf, to_markdown, to_mathematica
+from symbolic_dag.handoff import (
+    from_mathematica,
+    render_pdf,
+    to_markdown,
+    to_mathematica,
+)
 from symbolic_dag.krecursion import compute_k_blocks_multiroot, get_K, hermitianize
 from symbolic_dag.latex import cmi_to_latex, report
 from symbolic_dag.matderiv import (
@@ -49,6 +54,7 @@ __all__ = [
     "conditional_covariance",
     "conditional_covariance_seq",
     "conditional_mutual_information_from_k",
+    "from_mathematica",
     "get_K",
     "report",
     "hermitian",

@@ -47,38 +47,58 @@ def _wl_symbol(name: str) -> str:
     return f"Subscript[{base}, {sub.replace('_', ', ')}]" if sub else base
 
 
-def _wl(e) -> str:
-    """Recursively render a ``sympy`` matrix expression as Wolfram Language."""
+def _wl(e, scalar: bool = False) -> str:
+    """Recursively render a ``sympy`` matrix expression as Wolfram Language.
+
+    With ``scalar=True`` the matrices are treated as ``1x1`` scalars: ``Dot`` ->
+    ``Times``, ``ConjugateTranspose`` -> ``Conjugate``, ``Inverse`` -> reciprocal,
+    ``IdentityMatrix`` -> ``1`` --- a form ready for ``Integrate`` / ``Expectation``
+    (e.g. an ergodic average over fading), where the matrix form is not.
+    """
     if isinstance(e, (HermitianMatrix, MatrixSymbol)):
         return _wl_symbol(e.name)
     if isinstance(e, Identity):
-        return f"IdentityMatrix[{e.rows}]"
+        return "1" if scalar else f"IdentityMatrix[{e.rows}]"
     if isinstance(e, ZeroMatrix):
-        return f"ConstantArray[0, {{{e.rows}, {e.cols}}}]"
+        return "0" if scalar else f"ConstantArray[0, {{{e.rows}, {e.cols}}}]"
     if isinstance(e, Adjoint):
-        return f"ConjugateTranspose[{_wl(e.arg)}]"
+        inner = _wl(e.arg, scalar)
+        return f"Conjugate[{inner}]" if scalar else f"ConjugateTranspose[{inner}]"
     if isinstance(e, Transpose):
-        return f"Transpose[{_wl(e.arg)}]"
+        inner = _wl(e.arg, scalar)
+        return inner if scalar else f"Transpose[{inner}]"
     if isinstance(e, Inverse):
-        return f"Inverse[{_wl(e.arg)}]"
+        inner = _wl(e.arg, scalar)
+        return f"Power[{inner}, -1]" if scalar else f"Inverse[{inner}]"
     if isinstance(e, MatPow):
-        return f"MatrixPower[{_wl(e.base)}, {sp.mathematica_code(e.exp)}]"
+        exp = sp.mathematica_code(e.exp)
+        head = "Power" if scalar else "MatrixPower"
+        return f"{head}[{_wl(e.base, scalar)}, {exp}]"
     if isinstance(e, BlockMatrix):
+        if scalar:
+            raise ValueError("scalar=True does not support a BlockMatrix term.")
         rows = [
             "{" + ", ".join(_wl(e.blocks[i, j]) for j in range(e.blockshape[1])) + "}"
             for i in range(e.blockshape[0])
         ]
         return "ArrayFlatten[{" + ", ".join(rows) + "}]"
     if isinstance(e, MatAdd):
-        return "Plus[" + ", ".join(_wl(a) for a in e.args) + "]"
+        return "Plus[" + ", ".join(_wl(a, scalar) for a in e.args) + "]"
     if isinstance(e, MatMul):
         coeff, mm = e.as_coeff_mmul()
-        dot = "Dot[" + ", ".join(_wl(a) for a in mm.args) + "]"
-        return dot if coeff == 1 else f"Times[{sp.mathematica_code(coeff)}, {dot}]"
+        head = "Times" if scalar else "Dot"
+        body = f"{head}[" + ", ".join(_wl(a, scalar) for a in mm.args) + "]"
+        return body if coeff == 1 else f"Times[{sp.mathematica_code(coeff)}, {body}]"
     return sp.mathematica_code(e)  # plain scalar
 
 
-def to_mathematica(obj, var: MatrixSymbol | None = None, *, simplify: str | None = "normalize") -> str:
+def to_mathematica(
+    obj,
+    var: MatrixSymbol | None = None,
+    *,
+    scalar: bool = False,
+    simplify: str | None = "normalize",
+) -> str:
     """Wolfram Language string for a matrix expression or a ``SymbolicCMI``.
 
     Args:
@@ -87,29 +107,92 @@ def to_mathematica(obj, var: MatrixSymbol | None = None, *, simplify: str | None
             ``Sum_k sign_k Log[Det[...]]`` is emitted; if ``var`` is given, its
             Wirtinger gradient ``dI/dvar*`` is emitted instead.
         var: differentiate the CMI w.r.t. this symbol (gradient hand-off).
+        scalar: treat matrices as ``1x1`` scalars (``Det`` is dropped, ``Dot`` ->
+            ``Times`` etc.) --- the form to feed Wolfram's ``Integrate`` /
+            ``Expectation`` for a scalar/eigenvalue ergodic average.
         simplify: rewrite strategy applied to the CMI's matrices before export
             (``"normalize"`` / ``"capacity"`` / ``None``).
 
     Matrix-symbol names are mapped to ``Subscript[...]`` (e.g. ``Sigma_0`` ->
     ``Subscript[Sigma, 0]``); single-letter Wolfram built-ins (``N``, ``D``, ``E``,
-    ``I``, ``K``, ``O``) may need renaming on the Mathematica side.
+    ``I``, ``K``, ``O``) may need renaming on the Mathematica side. Round-trip a
+    Wolfram result back with :func:`from_mathematica`.
     """
     from symbolic_dag.expr import SymbolicCMI
 
     if isinstance(obj, SymbolicCMI):
         if var is not None:
-            return _wl(obj.wirtinger_grad(var))
+            return _wl(obj.wirtinger_grad(var), scalar)
+        if scalar:
+            # Two-term entropy form  log det Sigma_{B|C} - log det Sigma_{B|AC}
+            # (single-node outer) -- block-free, so it flattens to a clean scalar.
+            from symbolic_dag.assumptions import apply_hermitian
+            from symbolic_dag.information import conditional_covariance_seq
+            from symbolic_dag.rewrite import simplify_expr
+
+            A, B, C = list(obj.A), list(obj.B), list(obj.C)
+            if len(B) == 1:
+                outer, inner = B[0], A
+            elif len(A) == 1:
+                outer, inner = A[0], B
+            else:
+                raise ValueError(
+                    "scalar=True needs A or B to be a single node "
+                    f"(got |A|={len(A)}, |B|={len(B)})."
+                )
+            K = obj.metadata["K"]
+            M1 = conditional_covariance_seq(K, outer, sorted(C))
+            M2 = conditional_covariance_seq(K, outer, sorted(inner + C))
+            if simplify is not None:
+                M1 = simplify_expr(apply_hermitian(M1), simplify)
+                M2 = simplify_expr(apply_hermitian(M2), simplify)
+            return (
+                f"Plus[Log[{_wl(M1, scalar=True)}], "
+                f"Times[-1, Log[{_wl(M2, scalar=True)}]]]"
+            )
         terms = obj.logdet_terms
         if simplify is not None:
             from symbolic_dag.rewrite import simplify_expr
 
             terms = [(s, simplify_expr(M, simplify)) for s, M in terms]
-        parts = [
-            f"Log[Det[{_wl(M)}]]" if s > 0 else f"Times[-1, Log[Det[{_wl(M)}]]]"
-            for s, M in terms
-        ]
+        parts = []
+        for s, M in terms:
+            term = f"Log[Det[{_wl(M)}]]"
+            parts.append(term if s > 0 else f"Times[-1, {term}]")
         return "Plus[" + ", ".join(parts) + "]"
-    return _wl(obj)
+    return _wl(obj, scalar)
+
+
+def from_mathematica(s: str):
+    """Parse a Wolfram Language (scalar) expression string back into ``sympy``.
+
+    Closes the loop after Wolfram does the heavy symbolic work (e.g. an ergodic
+    integral): the returned ``sympy`` expression can be evaluated / cross-checked
+    numerically. A thin wrapper over ``sympy.parsing.mathematica.parse_mathematica``
+    that additionally maps the special functions common in these results
+    (``ExpIntegralE`` -> ``expint``, ``ExpIntegralEi`` -> ``Ei``, ``Gamma`` ->
+    ``uppergamma``/``gamma`` ...) to their ``sympy`` equivalents, so the result is
+    numerically evaluable. It handles **scalar** expressions, not matrix algebra
+    (``Dot`` / ``ConjugateTranspose``).
+    """
+    from sympy import Ei, erf, erfc, expint, gamma, uppergamma
+    from sympy.core.function import AppliedUndef
+    from sympy.parsing.mathematica import parse_mathematica
+
+    expr = parse_mathematica(s)
+    table = {
+        "ExpIntegralE": lambda *a: expint(*a),
+        "ExpIntegralEi": lambda *a: Ei(*a),
+        "Gamma": lambda *a: uppergamma(*a) if len(a) == 2 else gamma(*a),
+        "Erf": lambda *a: erf(*a),
+        "Erfc": lambda *a: erfc(*a),
+    }
+    reps = {
+        f: table[f.func.__name__](*f.args)
+        for f in expr.atoms(AppliedUndef)
+        if f.func.__name__ in table
+    }
+    return expr.xreplace(reps) if reps else expr
 
 
 # ----------------------------------------------------------------------

@@ -182,7 +182,7 @@ All symbols below are re-exported from the top-level package.
 | `trace_grad(M, var)` / `wirtinger_grad_trace(M, F, dF)` | `matderiv` | Closed-form Wirtinger gradient of a **trace objective** `d(tr M)/dvar*` — e.g. an MMSE design `tr(Σ_{X\|Y})`. Autograd returns `2×`. |
 | `solve_stationary(equation, var)` | `solve` | Solve a **linear** matrix stationarity (KKT) equation `equation = 0` for `var` (right-/left-linear, single two-sided term) — e.g. the MMSE/Wiener KKT. Nonlinear (capacity) equations raise. |
 | `cmi_to_latex(cmi)` / `report(cmi, var)` (and `SymbolicCMI.to_latex` / `.report`) | `latex` | LaTeX hand-off: the CMI (structural or expanded), the gradient, and the KKT condition. |
-| `to_mathematica(obj, var=None)` / `to_markdown(cmi, var=None)` / `render_pdf(obj, path, *, var=None, png=False)` | `handoff` | Pretty type-setting of the closed forms for the next step: a **Wolfram Language** string (`Dot`/`ConjugateTranspose`/`Inverse`/`Det`), an **LLM-/human-readable Markdown** summary, and a **standalone PDF/PNG** (via `pdflatex`). |
+| `to_mathematica(obj, var=None, *, scalar=False)` / `from_mathematica(s)` / `to_markdown(cmi, var=None)` / `render_pdf(obj, path, *, var=None, png=False)` | `handoff` | Pretty type-setting / round-trip of the closed forms: a **Wolfram Language** string (`Dot`/`ConjugateTranspose`/`Inverse`/`Det`; `scalar=True` flattens 1×1 for `Integrate`/`Expectation`), **back from Wolfram** to `sympy` (`from_mathematica`, special functions mapped), an **LLM-/human-readable Markdown** summary, and a **standalone PDF/PNG** (via `pdflatex`). |
 | `numpy_cmi(K, A, B, C)` / `numpy_k_blocks(...)` | `numeric` | An independent NumPy CMI oracle for verification. |
 
 ### Conventions
@@ -280,6 +280,40 @@ A four-part walkthrough is available under [`docs/`](docs/README.md):
 | `uv run python examples/precoder_gradient.py` | closed-form Wirtinger gradient / KKT of a MIMO precoder, checked against PyTorch autograd. |
 
 See [`examples/README.md`](examples/README.md).
+
+---
+
+## Optional: pairing with Wolfram and Claude Code
+
+`symbolic-dag` is most powerful as the *exact-symbolic core* of a small pipeline.
+It deliberately stops at the closed form; the heavy symbolic steps it leaves to the
+analyst (integration over fading, special-function simplification, spectral limits)
+are exactly what a general CAS like **Wolfram / Mathematica** excels at — and an
+agent like **Claude Code** can glue and *verify* the two. The hand-off API makes
+this frictionless.
+
+A worked example — the **ergodic** capacity of a fading channel, which is out of
+this library's deterministic scope, becomes a three-step hand-off:
+
+```python
+# 1. symbolic-dag: the exact instantaneous rate, as a scalar Wolfram expression
+I.to_mathematica(scalar=True)
+#   -> "Plus[Log[Plus[Times[h, Q, Conjugate[h]], s2]], Times[-1, Log[s2]]]"
+
+# 2. Wolfram does the fading average (here Rayleigh, |h|^2 ~ Exp(1)):
+#      Expectation[Log[1 + rho g], g \[Distributed] ExponentialDistribution[1]]
+#   -> E^(1/rho) Gamma[0, 1/rho]              (the textbook closed form)
+
+# 3. bring it back and check it numerically
+from symbolic_dag import from_mathematica
+erg = from_mathematica("E^(1/rho)*Gamma[0, 1/rho]")   # -> exp(1/rho)*expint(1, 1/rho)
+float(erg.subs("rho", 4).evalf())                     # 1.3408854448...  (== Monte-Carlo)
+```
+
+Every stage stays **machine-verified** (PyTorch autograd / cmi-dag / Monte-Carlo),
+and the analyst keeps the modelling insight (the eigenvalue/density reduction, the
+ansatz). If you drive this repo with Claude Code, the bundled
+[`CLAUDE.md`](CLAUDE.md) describes the workflow and how to find/run `wolframscript`.
 
 ---
 
