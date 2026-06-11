@@ -76,6 +76,48 @@ def test_fisher_information_matrix_value(d):
     assert abs(crb_value(J[0, 0], subs, d) - ref) < 1e-7
 
 
+def test_single_target_angle_crb_reproduction():
+    """Reproduce the single-target angle CRB (complex-amplitude nuisance) from the FIM.
+
+    This is the data-FIM CRB at the heart of MIMO-radar ISAC papers (e.g. the
+    posterior CRB of 2026002049): echo mean ``mu = s b(theta)``, estimate the angle
+    with the complex amplitude ``s`` as a nuisance. Build the FIM with
+    ``fisher_information_matrix`` and check ``cramer_rao_bound`` equals both a direct
+    numerical FIM inverse and the projection closed form
+    ``sigma^2 / (2 || P_b^perp (s db) ||^2)``.
+    """
+    import numpy as np
+    import torch
+    from sympy import I, MatrixSymbol
+
+    Dt, b = MatrixSymbol("D_theta", DIM, 1), MatrixSymbol("b", DIM, 1)
+    N = hermitian("N", DIM)
+    # parameters (theta, Re s, Im s); mean derivatives s*db/dtheta, b, j b
+    J = fisher_information_matrix(N, dmu=[Dt, b, I * b])
+    crb_theta = cramer_rao_bound(J, 0)
+
+    Nr, th, sig2, s = 4, 0.3, 0.7, 0.8 + 0.5j
+    k = np.arange(Nr)
+    bn = np.exp(1j * np.pi * k * np.sin(th))                          # ULA steering
+    dbn = 1j * np.pi * k * np.cos(th) * np.exp(1j * np.pi * k * np.sin(th))
+    Dtn, Nn = s * dbn, (sig2 * np.eye(Nr)).astype(complex)
+    C = torch.complex128
+    subs = {
+        Dt: torch.tensor(Dtn.reshape(-1, 1), dtype=C),
+        b: torch.tensor(bn.reshape(-1, 1), dtype=C),
+        N: torch.tensor(Nn, dtype=C),
+    }
+    crb_lib = crb_value(crb_theta, subs, Nr)
+
+    D = np.stack([Dtn, bn, 1j * bn], axis=1)
+    crb_direct = np.linalg.inv(2 * np.real(D.conj().T @ np.linalg.inv(Nn) @ D))[0, 0]
+    Pperp = Dtn - bn * (bn.conj() @ Dtn) / (bn.conj() @ bn)
+    crb_closed = sig2 / (2 * np.linalg.norm(Pperp) ** 2)
+
+    assert abs(crb_lib - crb_direct) < 1e-9
+    assert abs(crb_lib - crb_closed) < 1e-9
+
+
 def test_fisher_mean_term_value():
     import torch
 

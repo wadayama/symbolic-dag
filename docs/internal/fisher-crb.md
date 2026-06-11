@@ -73,9 +73,16 @@ Fisher info unified).
 
 ## Verification & tests
 
-`tests/test_fisher.py` (6 tests): the PCRB reproduces the paper's closed form;
+`tests/test_fisher.py` (7 tests): the PCRB reproduces the paper's closed form;
 `crb_grad` matches autograd to ~1e-18 for the PCRB and `tr(J⁻¹)` metrics (d=2,3);
 `fisher_information_matrix` values match a direct FIM (covariance- and mean-term).
+
+**ICC reproduction test** (`test_single_target_angle_crb_reproduction`): the
+single-target angle CRB with a complex-amplitude nuisance — the data-FIM CRB at the
+heart of MIMO-radar ISAC papers (e.g. 2026002049). Echo mean `μ = s·b(θ)`; build the
+3-parameter FIM (`θ, Re s, Im s`) with `fisher_information_matrix(N, dmu=[s·ḃ, b, j·b])`,
+take `cramer_rao_bound(J, 0)`, and check it equals both a direct numerical FIM inverse
+and the projection closed form `σ²/(2‖P_b^⊥(s·ḃ)‖²)` — agreement ~1e-18.
 
 ## Known gaps / future work
 
