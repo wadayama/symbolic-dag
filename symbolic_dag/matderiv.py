@@ -38,7 +38,24 @@ from sympy import (
     ZeroMatrix,
 )
 
-from symbolic_dag.assumptions import apply_hermitian
+from symbolic_dag.assumptions import HermitianMatrix, apply_hermitian
+
+
+def _check_unconstrained(var: MatrixSymbol) -> None:
+    """Reject differentiation w.r.t. a Hermitian covariance symbol.
+
+    For a Hermitian variable, ``var`` and ``var^H`` are *not* independent --- and
+    since ``Adjoint(Sigma) -> Sigma`` has typically already been imposed on the
+    expression, the unconstrained Wirtinger machinery would find no ``dF^H``
+    coefficient and silently return the zero matrix. Fail loudly instead.
+    """
+    if isinstance(var, HermitianMatrix):
+        raise NotImplementedError(
+            f"Wirtinger gradient w.r.t. the Hermitian covariance symbol "
+            f"{var.name!r} is not supported: a Hermitian variable and its "
+            "adjoint are not independent, so the unconstrained gradient would "
+            "be silently wrong. Differentiate w.r.t. a plain MatrixSymbol."
+        )
 
 
 def differential(e: MatrixExpr, F: MatrixSymbol, dF: MatrixSymbol) -> MatrixExpr:
@@ -105,6 +122,7 @@ def wirtinger_grad_logdet(
     M: MatrixExpr, F: MatrixSymbol, dF: MatrixSymbol
 ) -> MatrixExpr:
     """Closed-form Wirtinger gradient ``d(log det M)/dF^*``, derived symbolically."""
+    _check_unconstrained(F)
     Minv = Inverse(M)
     G = None
     for t in _add_terms(differential(M, F, dF)):
@@ -125,6 +143,7 @@ def wirtinger_grad_trace(
     use is an **MMSE / LMMSE** objective ``tr(Sigma_{X|Y})`` (an estimation-error
     covariance). A numerical library's autograd returns ``2 *`` this gradient.
     """
+    _check_unconstrained(F)
     G = None
     for t in _add_terms(differential(M, F, dF)):
         coeff = _coeff_of_conj(t, dF)

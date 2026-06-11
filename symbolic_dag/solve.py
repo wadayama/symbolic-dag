@@ -28,8 +28,11 @@ def _split_term(t: MatrixExpr, var: MatrixSymbol):
     k = mats.index(var)
     left, right = mats[:k], mats[k + 1:]
     # var must be a *bare* factor: it may not also appear nested (e.g. inside an
-    # inverse) in the surrounding factors, else the term is nonlinear in var.
+    # inverse) in the surrounding matrix factors, NOR inside a scalar coefficient
+    # (e.g. ``Trace(... var ...)``), else the term is nonlinear in var.
     if any(m.has(var) for m in left + right):
+        return None
+    if any(s.has(var) for s in scals):
         return None
     coeff = Mul(*scals) if scals else sp.Integer(1)
     return coeff, left, right
@@ -71,8 +74,9 @@ def solve_stationary(equation, var: MatrixSymbol) -> MatrixExpr:
         split = _split_term(t, var)
         if split is None:
             raise NotImplementedError(
-                "solve_stationary: `var` appears nested (adjoint/inverse) or more "
-                "than once; only equations affine and linear in `var` are supported."
+                "solve_stationary: `var` appears nested (adjoint / inverse / "
+                "scalar coefficient such as a Trace) or more than once; only "
+                "equations affine and linear in `var` are supported."
             )
         var_terms.append(split)
     if not var_terms:

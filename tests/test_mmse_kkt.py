@@ -127,3 +127,13 @@ def test_solve_stationary_rejects_nonlinear():
     I = conditional_mutual_information_from_k(K, A=[0], B=[2], C=[1])
     with pytest.raises(NotImplementedError):
         solve_stationary(I.wirtinger_grad(F), F)
+
+
+def test_solve_stationary_rejects_var_in_scalar_coefficient():
+    # `var` hiding inside a SCALAR coefficient (e.g. Trace(W P) * W) makes the
+    # equation nonlinear; it must raise, not return a pseudo-solution.
+    from sympy import Trace
+
+    W, P, S = (MatrixSymbol(s, DIM, DIM) for s in ("W", "P", "S"))
+    with pytest.raises(NotImplementedError):
+        solve_stationary(Trace(W * P) * W + S, W)

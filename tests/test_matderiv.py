@@ -69,6 +69,29 @@ def test_precoder_gradient_finite_difference():
         assert abs(fd - directional) < 1e-5, f"d={d}: fd={fd:.6f} dir={directional:.6f}"
 
 
+def test_gradient_wrt_hermitian_variable_raises():
+    # For a Hermitian variable, F and F^H are not independent; the unconstrained
+    # machinery would silently return zero, so it must fail loudly instead.
+    import pytest
+
+    from symbolic_dag.matderiv import trace_grad, wirtinger_grad_trace
+
+    A = MatrixSymbol("A", DIM, DIM)
+    N = hermitian("N", DIM)
+    M = N + A * N * sp.Adjoint(A)
+    dN = MatrixSymbol("dN", DIM, DIM)
+    with pytest.raises(NotImplementedError):
+        wirtinger_grad_logdet(M, N, dN)
+    with pytest.raises(NotImplementedError):
+        wirtinger_grad_trace(M, N, dN)
+    with pytest.raises(NotImplementedError):
+        trace_grad(M, N)
+    # ... and through the SymbolicCMI surface as well
+    I, syms = _precoder_cmi()
+    with pytest.raises(NotImplementedError):
+        I.wirtinger_grad(syms["R"])
+
+
 def test_stationarity_returns_eq():
     I, syms = _precoder_cmi()
     eq = I.stationarity(syms["F"])
