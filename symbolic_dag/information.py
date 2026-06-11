@@ -106,6 +106,28 @@ def mmse_error_covariance(
     return conditional_covariance_seq(K, target, observations)
 
 
+def lmmse_estimator(
+    K: dict[tuple[int, int], MatrixExpr],
+    target: int | Sequence[int],
+    observations: Sequence[int],
+) -> MatrixExpr:
+    """Closed-form LMMSE / Wiener estimator ``W`` with ``X_hat = W · V_observations``.
+
+    This is the solution of the (linear) MMSE stationarity
+    ``d/dW* tr E(W) = 0`` --- the Wiener filter
+
+        W = Sigma_{target, obs} · Sigma_{obs, obs}^{-1},
+
+    whose residual error covariance is :func:`mmse_error_covariance`. ``target``
+    may be a single node or a node set. (Equivalently, ``W`` is what
+    :func:`symbolic_dag.solve.solve_stationary` returns for the gradient of the
+    estimator MSE; this is the direct closed form.)
+    """
+    tgt = [target] if isinstance(target, int) else sorted(target)
+    obs = sorted(observations)
+    return (_assemble(K, tgt, obs) * _assemble(K, obs, obs).I).doit()
+
+
 def _cross_conditional(
     K: dict[tuple[int, int], MatrixExpr],
     A: Sequence[int],

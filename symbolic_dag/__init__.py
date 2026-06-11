@@ -22,6 +22,7 @@ from symbolic_dag.information import (
     conditional_covariance,
     conditional_covariance_seq,
     conditional_mutual_information_from_k,
+    lmmse_estimator,
     mmse_error_covariance,
 )
 from symbolic_dag.krecursion import compute_k_blocks_multiroot, get_K, hermitianize
@@ -34,6 +35,7 @@ from symbolic_dag.matderiv import (
 )
 from symbolic_dag.numeric import numpy_cmi, numpy_k_blocks
 from symbolic_dag.rewrite import proves_zero, simplify_expr
+from symbolic_dag.solve import solve_stationary
 from symbolic_dag.verify import random_torch_point, to_torch
 
 __all__ = [
@@ -50,12 +52,14 @@ __all__ = [
     "report",
     "hermitian",
     "hermitianize",
+    "lmmse_estimator",
     "mmse_error_covariance",
     "numpy_cmi",
     "numpy_k_blocks",
     "proves_zero",
     "random_torch_point",
     "simplify_expr",
+    "solve_stationary",
     "to_torch",
     "trace_grad",
     "wirtinger_grad_cmi",

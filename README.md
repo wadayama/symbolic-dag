@@ -83,7 +83,7 @@ require the `cmi-dag` repository to be available locally (a sibling checkout, or
 
 ```
 symbolic-dag/
-├── symbolic_dag/    core library (9 modules)
+├── symbolic_dag/    core library (11 modules)
 ├── tests/           pytest suite (core + cmi-dag cross-validation)
 ├── examples/        runnable scripts
 ├── docs/            tutorial walkthrough
@@ -172,6 +172,7 @@ All symbols below are re-exported from the top-level package.
 | `conditional_mutual_information_from_k(K, A, B, C=())` | `information` | `I(V_A; V_B \| V_C)` as a lazy `SymbolicCMI`. Numeric value agrees with cmi-dag exactly (complex, no ½). |
 | `conditional_covariance(K, U, C)` | `information` | Schur-complement conditional covariance `Σ_{U\|C}` (block-assembled). |
 | `mmse_error_covariance(K, target, observations)` | `information` | LMMSE estimation-error covariance `Σ_{target\|observations}` (single target node, block-free). Its `tr` is the scalar MMSE; differentiate with `trace_grad`. |
+| `lmmse_estimator(K, target, observations)` | `information` | Closed-form Wiener filter `W = Σ_{target,obs}·Σ_{obs,obs}⁻¹` — the MMSE KKT solution; residual is `mmse_error_covariance`. |
 | `SymbolicCMI` | `expr` | Lazy CMI: signed log-det terms + cross conditional covariance. Methods `.simplify(strategy)`, `.is_conditionally_independent()`, `.wirtinger_grad(var)`, `.stationarity(var)`, `.to_expr()`; numerical checks `.check(dim)`, `.check_gradient(var, dim)`, `.torch_value(subs, dim)` (PyTorch), and `.evaluate(subs)` / `.numeric_check(subs, ref)` (NumPy). |
 | `to_torch(expr, subs, dim)` / `random_torch_point(cmi, dim)` | `verify` | Lower a symbolic matrix expression to a differentiable `torch` tensor; draw a random complex point (covariances Hermitian PD). |
 | `hermitian(name, d)` | `assumptions` | Create a `d×d` Hermitian PD covariance symbol (a `HermitianMatrix`). The engines recognise it and apply `Adjoint(Σ) → Σ`. |
@@ -179,6 +180,7 @@ All symbols below are re-exported from the top-level package.
 | `simplify_expr(e, strategy="normalize")` / `proves_zero(e)` | `rewrite` | The strategic rewrite engine: `"normalize"` (structural) or `"capacity"` (with low-rank expansion); `proves_zero` is the d-separation check. |
 | `wirtinger_grad_logdet(M, F, dF)` / `wirtinger_grad_cmi(cmi, F)` | `matderiv` | The matrix/Wirtinger differentiation engine for CMI (arbitrary `A`, `B`, `C`; both-multi-node via the MI chain rule). |
 | `trace_grad(M, var)` / `wirtinger_grad_trace(M, F, dF)` | `matderiv` | Closed-form Wirtinger gradient of a **trace objective** `d(tr M)/dvar*` — e.g. an MMSE design `tr(Σ_{X\|Y})`. Autograd returns `2×`. |
+| `solve_stationary(equation, var)` | `solve` | Solve a **linear** matrix stationarity (KKT) equation `equation = 0` for `var` (right-/left-linear, single two-sided term) — e.g. the MMSE/Wiener KKT. Nonlinear (capacity) equations raise. |
 | `cmi_to_latex(cmi)` / `report(cmi, var)` (and `SymbolicCMI.to_latex` / `.report`) | `latex` | LaTeX hand-off: the CMI (structural or expanded), the gradient, and the KKT condition. |
 | `numpy_cmi(K, A, B, C)` / `numpy_k_blocks(...)` | `numeric` | An independent NumPy CMI oracle for verification. |
 
@@ -287,6 +289,10 @@ See [`examples/README.md`](examples/README.md).
   condition**, handed off via LaTeX (`to_latex`, `report`); the problem-specific
   regime / optimal-structure analysis is intentionally left to the analyst.
   Automated regime-map / threshold solving is out of scope.
+- **KKT solving.** `solve_stationary` solves *linear* stationarity equations in
+  closed form (the MMSE / Wiener case). A capacity stationarity `dI/dF* = 0` is
+  nonlinear (`F` sits inside an inverse) and is not solved — it needs an
+  eigen-ansatz / water-filling argument, which stays with the analyst.
 - **Gradients.** The Wirtinger gradient handles arbitrary `A`, `B`, `C` — single-
   or multi-node, via sequential single-node conditioning and (when both `A` and
   `B` are multi-node) the mutual-information chain rule — for log-det (CMI) and
