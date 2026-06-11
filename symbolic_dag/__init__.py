@@ -17,13 +17,21 @@ from __future__ import annotations
 
 from symbolic_dag.assumptions import HermitianMatrix, hermitian
 from symbolic_dag.builder import GaussianDAG
-from symbolic_dag.expr import RecursiveExpr, SymbolicCMI
+from symbolic_dag.expr import LogDetQuantity, RecursiveExpr, SymbolicCMI
 from symbolic_dag.information import (
     conditional_covariance,
     conditional_covariance_seq,
+    conditional_entropy_from_k,
     conditional_mutual_information_from_k,
+    gaussian_kl,
     lmmse_estimator,
     mmse_error_covariance,
+    total_correlation_from_k,
+)
+from symbolic_dag.objectives import (
+    CompositeCMI,
+    composite_cmi,
+    directed_information_from_k,
 )
 from symbolic_dag.handoff import (
     from_mathematica,
@@ -42,27 +50,35 @@ from symbolic_dag.matderiv import (
 from symbolic_dag.numeric import numpy_cmi, numpy_k_blocks
 from symbolic_dag.rewrite import proves_zero, simplify_expr
 from symbolic_dag.solve import solve_stationary
-from symbolic_dag.verify import random_torch_point, to_torch
+from symbolic_dag.verify import hermitian_grad_check, random_torch_point, to_torch
 
 __all__ = [
+    "CompositeCMI",
     "GaussianDAG",
     "HermitianMatrix",
+    "LogDetQuantity",
     "RecursiveExpr",
     "SymbolicCMI",
     "cmi_to_latex",
+    "composite_cmi",
     "compute_k_blocks_multiroot",
     "conditional_covariance",
     "conditional_covariance_seq",
+    "conditional_entropy_from_k",
     "conditional_mutual_information_from_k",
+    "directed_information_from_k",
     "from_mathematica",
+    "gaussian_kl",
     "get_K",
     "report",
     "hermitian",
+    "hermitian_grad_check",
     "hermitianize",
     "lmmse_estimator",
     "mmse_error_covariance",
     "numpy_cmi",
     "numpy_k_blocks",
+    "total_correlation_from_k",
     "proves_zero",
     "random_torch_point",
     "render_pdf",

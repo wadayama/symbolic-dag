@@ -27,8 +27,11 @@ autograd / cmi-dag / Monte-Carlo), so results are *checked*, never just plausibl
 ## Scope — what to mechanize, what stays human
 
 Mechanize (the library does it, exactly):
-- closed-form CMI for any disjoint `A, B, C` (single- or multi-node),
-- closed-form Wirtinger gradient `∂I/∂F*` and the KKT condition `=0`,
+- closed-form CMI for any disjoint `A, B, C` (single- or multi-node), plus the
+  sibling quantities: conditional entropy, total correlation, directed information,
+  Gaussian KL, and weighted-CMI-sum objectives (`composite_cmi`),
+- closed-form Wirtinger gradient `∂I/∂F*` and the KKT condition `=0`; the gradient
+  w.r.t. a **Hermitian input covariance** `Q` too (the capacity gradient `∂/∂Q`),
 - MMSE error covariance `Σ_{X|Y}`, the Wiener filter, **linear** stationarity solving,
 - d-separation / conditional independence **proofs** (symbolic, not numeric).
 

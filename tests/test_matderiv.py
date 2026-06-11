@@ -69,27 +69,30 @@ def test_precoder_gradient_finite_difference():
         assert abs(fd - directional) < 1e-5, f"d={d}: fd={fd:.6f} dir={directional:.6f}"
 
 
-def test_gradient_wrt_hermitian_variable_raises():
-    # For a Hermitian variable, F and F^H are not independent; the unconstrained
-    # machinery would silently return zero, so it must fail loudly instead.
-    import pytest
+def test_gradient_wrt_hermitian_variable_is_correct():
+    # A Hermitian variable used to silently return zero; it now returns the
+    # correct Hermitian gradient (df = tr(G dQ)). Check it is non-zero and that
+    # it matches a Hermitian-direction finite difference.
+    from symbolic_dag.assumptions import apply_hermitian
+    from symbolic_dag.matderiv import wirtinger_grad_logdet
+    from symbolic_dag.rewrite import simplify_expr
 
-    from symbolic_dag.matderiv import trace_grad, wirtinger_grad_trace
+    H = MatrixSymbol("H", DIM, DIM)
+    Q, N = hermitian("Q", DIM), hermitian("N", DIM)
+    dQ = MatrixSymbol("dQ", DIM, DIM)
+    G = simplify_expr(apply_hermitian(wirtinger_grad_logdet(N + H * Q * sp.Adjoint(H), Q, dQ)), "normalize")
+    assert not getattr(G, "is_ZeroMatrix", False)  # used to be silently zero
 
-    A = MatrixSymbol("A", DIM, DIM)
-    N = hermitian("N", DIM)
-    M = N + A * N * sp.Adjoint(A)
-    dN = MatrixSymbol("dN", DIM, DIM)
-    with pytest.raises(NotImplementedError):
-        wirtinger_grad_logdet(M, N, dN)
-    with pytest.raises(NotImplementedError):
-        wirtinger_grad_trace(M, N, dN)
-    with pytest.raises(NotImplementedError):
-        trace_grad(M, N)
-    # ... and through the SymbolicCMI surface as well
-    I, syms = _precoder_cmi()
-    with pytest.raises(NotImplementedError):
-        I.wirtinger_grad(syms["R"])
+    D, rng = 3, _rng(1)
+    Hn, Qn, Nn = _rc(D, rng), _hpd(D, rng), _hpd(D, rng)
+    sub = {H: sp.Matrix(Hn), Q: sp.Matrix(Qn), N: sp.Matrix(Nn), DIM: D}
+    A = _rc(D, rng)
+    Delta = A + A.conj().T
+    f = lambda Qm: float(np.linalg.slogdet(Nn + Hn @ Qm @ Hn.conj().T)[1].real)
+    t = 1e-6
+    dd = (f(Qn + t * Delta) - f(Qn - t * Delta)) / (2 * t)
+    Gn = _to_np(G, sub)
+    assert abs(dd - np.trace(Gn @ Delta).real) < 1e-6
 
 
 def test_stationarity_returns_eq():

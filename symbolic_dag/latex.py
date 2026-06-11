@@ -22,13 +22,15 @@ import sympy as sp
 from sympy import Determinant, MatrixExpr
 
 
-def _set(nodes) -> str:
+def _set(nodes, names=None) -> str:
+    if names:
+        return ",".join(names.get(n, str(n)) for n in nodes)
     return ",".join(map(str, nodes))
 
 
-def _cond_cov_symbol(U, C) -> str:
-    u = _set(U)
-    return rf"\Sigma_{{{u}\mid {_set(C)}}}" if C else rf"\Sigma_{{{u}}}"
+def _cond_cov_symbol(U, C, names=None) -> str:
+    u = _set(U, names)
+    return rf"\Sigma_{{{u}\mid {_set(C, names)}}}" if C else rf"\Sigma_{{{u}}}"
 
 
 def cmi_to_latex(cmi, *, expand: bool = False, simplify: str | None = "normalize") -> str:
@@ -41,17 +43,21 @@ def cmi_to_latex(cmi, *, expand: bool = False, simplify: str | None = "normalize
             expressions (simplified by ``simplify``).
         simplify: Rewrite strategy for the expanded matrices (``"normalize"``,
             ``"capacity"``, or ``None``).
+
+    If the CMI was built by :class:`symbolic_dag.builder.GaussianDAG`, its node
+    names are used (``V_X`` instead of ``V_0``); otherwise indices are shown.
     """
     A, B, C = cmi.A, cmi.B, cmi.C
-    a, b = _set(A), _set(B)
-    lhs = f"I(V_{{{a}}}; V_{{{b}}}" + (rf" \mid V_{{{_set(C)}}})" if C else ")")
+    names = cmi.metadata.get("node_names")
+    a, b = _set(A, names), _set(B, names)
+    lhs = f"I(V_{{{a}}}; V_{{{b}}}" + (rf" \mid V_{{{_set(C, names)}}})" if C else ")")
 
     if not expand:
         AB = sorted(tuple(A) + tuple(B))
         rhs = (
-            rf"\log\left|{_cond_cov_symbol(A, C)}\right|"
-            rf"+\log\left|{_cond_cov_symbol(B, C)}\right|"
-            rf"-\log\left|{_cond_cov_symbol(AB, C)}\right|"
+            rf"\log\left|{_cond_cov_symbol(A, C, names)}\right|"
+            rf"+\log\left|{_cond_cov_symbol(B, C, names)}\right|"
+            rf"-\log\left|{_cond_cov_symbol(AB, C, names)}\right|"
         )
         return f"{lhs} = {rhs}"
 

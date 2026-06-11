@@ -41,23 +41,6 @@ from sympy import (
 from symbolic_dag.assumptions import HermitianMatrix, apply_hermitian
 
 
-def _check_unconstrained(var: MatrixSymbol) -> None:
-    """Reject differentiation w.r.t. a Hermitian covariance symbol.
-
-    For a Hermitian variable, ``var`` and ``var^H`` are *not* independent --- and
-    since ``Adjoint(Sigma) -> Sigma`` has typically already been imposed on the
-    expression, the unconstrained Wirtinger machinery would find no ``dF^H``
-    coefficient and silently return the zero matrix. Fail loudly instead.
-    """
-    if isinstance(var, HermitianMatrix):
-        raise NotImplementedError(
-            f"Wirtinger gradient w.r.t. the Hermitian covariance symbol "
-            f"{var.name!r} is not supported: a Hermitian variable and its "
-            "adjoint are not independent, so the unconstrained gradient would "
-            "be silently wrong. Differentiate w.r.t. a plain MatrixSymbol."
-        )
-
-
 def differential(e: MatrixExpr, F: MatrixSymbol, dF: MatrixSymbol) -> MatrixExpr:
     """Matrix differential of ``e`` w.r.t. ``F`` (with ``F`` and ``F^H`` independent)."""
     if e == F:
@@ -104,25 +87,65 @@ def _add_terms(e: MatrixExpr) -> list[MatrixExpr]:
     return list(e.args) if isinstance(e, MatAdd) else [e]
 
 
-def _coeff_of_conj(term: MatrixExpr, dF: MatrixSymbol):
-    """If ``term`` contains ``dF^H``, return its cyclic coefficient; else ``None``."""
+def _coeff_of(term: MatrixExpr, factor) -> "MatrixExpr | None":
+    """Cyclic coefficient ``C`` such that ``term = tr(C · factor)``, or ``None``.
+
+    Uses ``tr(P · factor · Q) = tr(Q P · factor)``; ``factor`` is ``dF`` (plain,
+    holomorphic) or ``Adjoint(dF)`` (the conjugate differential).
+    """
     term = term.doit()
     if isinstance(term, MatMul):
         scal, mm = term.as_coeff_mmul()
         facs = list(mm.args)
     else:
         scal, facs = sp.Integer(1), [term]
-    if Adjoint(dF) not in facs:
+    if factor not in facs:
         return None
-    k = facs.index(Adjoint(dF))
+    k = facs.index(factor)
     return (scal * MatMul(*(facs[k + 1:] + facs[:k]))).doit()
+
+
+def _coeff_of_conj(term: MatrixExpr, dF: MatrixSymbol):
+    """If ``term`` contains ``dF^H``, return its cyclic coefficient; else ``None``."""
+    return _coeff_of(term, Adjoint(dF))
+
+
+def _hermitian_grad(
+    M: MatrixExpr, Q: MatrixSymbol, dQ: MatrixSymbol, *, logdet: bool
+) -> MatrixExpr:
+    """Gradient ``G`` (``df = tr(G dQ)``) for a HERMITIAN variable ``Q``.
+
+    Since ``Q^H = Q``, the differential has a single ``dQ`` (not an independent
+    ``dQ^H``): we impose ``Adjoint(Q) -> Q`` first (``apply_hermitian``), then
+    extract the coefficient of the plain ``dQ``. With ``logdet`` the ``M^{-1}``
+    prefactor of ``d log det M = tr(M^{-1} dM)`` is included; otherwise it is the
+    trace objective ``d tr(M) = tr(dM)``. (No autograd factor of 2 here: the
+    Hermitian gradient is identified directly from ``df = tr(G dQ)``.)
+    """
+    M = apply_hermitian(M)
+    prefactor = Inverse(M) if logdet else None
+    G = None
+    for t in _add_terms(differential(M, Q, dQ)):
+        ext = (prefactor * t).doit() if prefactor is not None else t
+        coeff = _coeff_of(ext, dQ)
+        if coeff is not None:
+            G = coeff if G is None else (G + coeff).doit()
+    return ZeroMatrix(*Q.shape) if G is None else G
 
 
 def wirtinger_grad_logdet(
     M: MatrixExpr, F: MatrixSymbol, dF: MatrixSymbol
 ) -> MatrixExpr:
-    """Closed-form Wirtinger gradient ``d(log det M)/dF^*``, derived symbolically."""
-    _check_unconstrained(F)
+    """Closed-form gradient of ``log det M`` w.r.t. ``F``, derived symbolically.
+
+    For a plain ``MatrixSymbol`` ``F`` this is the Wirtinger gradient
+    ``d(log det M)/dF^*`` (``dI = tr(G dF^H)``; autograd returns ``2G``). For a
+    :class:`HermitianMatrix` covariance ``Q`` it is the **Hermitian** gradient
+    ``df = tr(G dQ)`` (no factor of 2) --- e.g. the capacity gradient
+    ``d log det(N + H Q H^H)/dQ = H^H (N + H Q H^H)^{-1} H``.
+    """
+    if isinstance(F, HermitianMatrix):
+        return _hermitian_grad(M, F, dF, logdet=True)
     Minv = Inverse(M)
     G = None
     for t in _add_terms(differential(M, F, dF)):
@@ -141,9 +164,12 @@ def wirtinger_grad_trace(
     cyclic property of the trace --- the trace analogue of
     :func:`wirtinger_grad_logdet`, without the ``M^{-1}`` prefactor. The primary
     use is an **MMSE / LMMSE** objective ``tr(Sigma_{X|Y})`` (an estimation-error
-    covariance). A numerical library's autograd returns ``2 *`` this gradient.
+    covariance). For a plain ``MatrixSymbol`` autograd returns ``2 *`` this; for a
+    :class:`HermitianMatrix` covariance ``Q`` it is the Hermitian gradient
+    ``d tr(M)/dQ`` with ``df = tr(G dQ)`` (no factor of 2).
     """
-    _check_unconstrained(F)
+    if isinstance(F, HermitianMatrix):
+        return _hermitian_grad(M, F, dF, logdet=False)
     G = None
     for t in _add_terms(differential(M, F, dF)):
         coeff = _coeff_of_conj(t, dF)

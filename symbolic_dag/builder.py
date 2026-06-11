@@ -106,6 +106,9 @@ class GaussianDAG:
         """Symbolic ``I(X_A; X_B | X_C)`` for named node sets."""
         idx, _ = self._index()
         K = self.k_blocks()
-        return conditional_mutual_information_from_k(
+        cmi = conditional_mutual_information_from_k(
             K, [idx[a] for a in A], [idx[b] for b in B], [idx[c] for c in C]
         )
+        # carry the names so the LaTeX hand-off prints V_X instead of V_0
+        cmi.metadata["node_names"] = {i: nm for nm, i in idx.items()}
+        return cmi

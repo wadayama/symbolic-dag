@@ -83,7 +83,7 @@ require the `cmi-dag` repository to be available locally (a sibling checkout, or
 
 ```
 symbolic-dag/
-├── symbolic_dag/    core library (12 modules)
+├── symbolic_dag/    core library (13 modules)
 ├── tests/           pytest suite (core + cmi-dag cross-validation)
 ├── examples/        runnable scripts
 ├── docs/            tutorial walkthrough
@@ -170,18 +170,20 @@ All symbols below are re-exported from the top-level package.
 | --- | --- | --- |
 | `compute_k_blocks_multiroot(num_nodes, roots, parents, edge_mats, root_covs, noise_covs, *, cross_root_covs=None, symmetrize_self_blocks=True)` | `krecursion` | Symbolic multi-root K-recursion. Same signature/conventions as cmi-dag; `edge_mats`/covariances are `sympy` matrix expressions. Returns the canonical block dict `K[(j,k)]` (`j ≥ k`). |
 | `conditional_mutual_information_from_k(K, A, B, C=())` | `information` | `I(V_A; V_B \| V_C)` as a lazy `SymbolicCMI`. Numeric value agrees with cmi-dag exactly (complex, no ½). |
+| `conditional_entropy_from_k(K, A, C=())` / `total_correlation_from_k(K, nodes, C=())` / `gaussian_kl(Σ0, Σ1)` | `information` | Sibling information quantities (a `LogDetQuantity`): differential entropy `h(V_A\|V_C)`, total correlation (multi-information), and Gaussian KL `D(CN(0,Σ0)‖CN(0,Σ1))` — same evaluate / `wirtinger_grad` / verification surface. |
+| `composite_cmi([(w_k, cmi_k), ...])` / `directed_information_from_k(K, X_seq, Y_seq, C=())` | `objectives` | Weighted CMI sum `f = Σ_k w_k I_k` (`CompositeCMI`; sum-rate / rate-region facets) and directed information `I(X^n→Y^n\|C)` (Massey) — gradient by linearity, same `check_gradient`. |
 | `conditional_covariance(K, U, C)` | `information` | Schur-complement conditional covariance `Σ_{U\|C}` (block-assembled). |
 | `mmse_error_covariance(K, target, observations)` | `information` | LMMSE estimation-error covariance `Σ_{target\|observations}` (single target node, block-free). Its `tr` is the scalar MMSE; differentiate with `trace_grad`. |
 | `lmmse_estimator(K, target, observations)` | `information` | Closed-form Wiener filter `W = Σ_{target,obs}·Σ_{obs,obs}⁻¹` — the MMSE KKT solution; residual is `mmse_error_covariance`. |
 | `SymbolicCMI` | `expr` | Lazy CMI: signed log-det terms + cross conditional covariance. Methods `.simplify(strategy)`, `.is_conditionally_independent()`, `.wirtinger_grad(var)`, `.stationarity(var)`, `.to_expr()`; numerical checks `.check(dim)`, `.check_gradient(var, dim)`, `.torch_value(subs, dim)` (PyTorch), `.evaluate(subs)` / `.numeric_check(subs, ref)` (NumPy); hand-off `.to_latex()` / `.report()` / `.to_mathematica(var)` / `.to_markdown(var)` / `.to_pdf(path, var)`. |
-| `to_torch(expr, subs, dim)` / `random_torch_point(cmi, dim)` | `verify` | Lower a symbolic matrix expression to a differentiable `torch` tensor; draw a random complex point (covariances Hermitian PD). |
+| `to_torch(expr, subs, dim)` / `random_torch_point(cmi, dim)` / `hermitian_grad_check(quantity, Q, dim)` | `verify` | Lower a symbolic matrix expression to a differentiable `torch` tensor; draw a random complex point (covariances Hermitian PD); finite-difference check of a Hermitian-variable gradient (`df = tr(G dQ)`). |
 | `hermitian(name, d)` | `assumptions` | Create a `d×d` Hermitian PD covariance symbol (a `HermitianMatrix`). The engines recognise it and apply `Adjoint(Σ) → Σ`. |
 | `GaussianDAG` | `builder` | Thin named-node builder (`add_source`, `add_node`, `cmi`); lowers to the functional core. |
-| `simplify_expr(e, strategy="normalize")` / `proves_zero(e)` | `rewrite` | The strategic rewrite engine: `"normalize"` (structural) or `"capacity"` (with low-rank expansion); `proves_zero` is the d-separation check. |
-| `wirtinger_grad_logdet(M, F, dF)` / `wirtinger_grad_cmi(cmi, F)` | `matderiv` | The matrix/Wirtinger differentiation engine for CMI (arbitrary `A`, `B`, `C`; both-multi-node via the MI chain rule). |
+| `simplify_expr(e, strategy="normalize")` / `proves_zero(e)` | `rewrite` | The strategic rewrite engine: `"normalize"` (structural) or `"capacity"` (low-rank expansion + Sylvester `det(I+AB)=det(I+BA)` canonicalisation); `proves_zero` is the d-separation check. |
+| `wirtinger_grad_logdet(M, F, dF)` / `wirtinger_grad_cmi(cmi, F)` | `matderiv` | The matrix/Wirtinger differentiation engine for CMI (arbitrary `A`, `B`, `C`; both-multi-node via the MI chain rule). A plain `MatrixSymbol` gives the Wirtinger gradient (autograd `2×`); a **Hermitian covariance** `Q` gives the gradient w.r.t. the input covariance, e.g. the capacity gradient `d log det(N+HQH^H)/dQ = Hᴴ(N+HQHᴴ)⁻¹H` (`df = tr(G dQ)`, no `2×`) — verify with `hermitian_grad_check`. |
 | `trace_grad(M, var)` / `wirtinger_grad_trace(M, F, dF)` | `matderiv` | Closed-form Wirtinger gradient of a **trace objective** `d(tr M)/dvar*` — e.g. an MMSE design `tr(Σ_{X\|Y})`. Autograd returns `2×`. |
 | `solve_stationary(equation, var)` | `solve` | Solve a **linear** matrix stationarity (KKT) equation `equation = 0` for `var` (right-/left-linear, single two-sided term) — e.g. the MMSE/Wiener KKT. Nonlinear (capacity) equations raise. |
-| `cmi_to_latex(cmi)` / `report(cmi, var)` (and `SymbolicCMI.to_latex` / `.report`) | `latex` | LaTeX hand-off: the CMI (structural or expanded), the gradient, and the KKT condition. |
+| `cmi_to_latex(cmi)` / `report(cmi, var)` (and `SymbolicCMI.to_latex` / `.report`) | `latex` | LaTeX hand-off: the CMI (structural or expanded), the gradient, and the KKT condition. CMIs built via `GaussianDAG` print **node names** (`V_X`) instead of indices. |
 | `to_mathematica(obj, var=None, *, scalar=False)` / `from_mathematica(s)` / `to_markdown(cmi, var=None)` / `render_pdf(obj, path, *, var=None, png=False)` | `handoff` | Pretty type-setting / round-trip of the closed forms: a **Wolfram Language** string (`Dot`/`ConjugateTranspose`/`Inverse`/`Det`; `scalar=True` flattens 1×1 for `Integrate`/`Expectation`), **back from Wolfram** to `sympy` (`from_mathematica`, special functions mapped), an **LLM-/human-readable Markdown** summary, and a **standalone PDF/PNG** (via `pdflatex`). |
 | `numpy_cmi(K, A, B, C)` / `numpy_k_blocks(...)` | `numeric` | An independent NumPy CMI oracle for verification. |
 

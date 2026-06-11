@@ -26,7 +26,7 @@ from collections.abc import Sequence
 import sympy as sp
 from sympy import BlockMatrix, MatrixExpr
 
-from symbolic_dag.expr import SymbolicCMI
+from symbolic_dag.expr import LogDetQuantity, SymbolicCMI
 from symbolic_dag.krecursion import get_K
 
 
@@ -126,6 +126,94 @@ def lmmse_estimator(
     tgt = [target] if isinstance(target, int) else sorted(target)
     obs = sorted(observations)
     return (_assemble(K, tgt, obs) * _assemble(K, obs, obs).I).doit()
+
+
+def conditional_entropy_from_k(
+    K: dict[tuple[int, int], MatrixExpr],
+    A: Sequence[int],
+    C: Sequence[int] = (),
+) -> LogDetQuantity:
+    """Differential entropy ``h(V_A | V_C)`` (nats, complex circular Gaussian).
+
+        h(V_A | V_C) = log det( (pi e) Sigma_{A|C} )
+                     = sum_i log det Sigma_{a_i | a_{<i}, C}  +  n_A log(pi e),
+
+    built in the chained (block-free) form so each term is a single matrix
+    expression and the Wirtinger engine applies. The additive constant
+    ``n_A log(pi e)`` (``n_A`` = total dimension of ``A``, possibly symbolic) is
+    carried explicitly; it cancels in entropy differences.
+    """
+    A, C = sorted(A), sorted(C)
+    if not A:
+        raise ValueError("A must be non-empty.")
+    if set(A) & set(C):
+        raise ValueError(f"A and C must be disjoint; got A={A}, C={C}.")
+    terms: list[tuple[sp.Expr, MatrixExpr]] = []
+    n_A: sp.Expr = sp.Integer(0)
+    for i, a in enumerate(A):
+        terms.append((sp.Integer(1), conditional_covariance_seq(K, a, A[:i] + C)))
+        n_A = n_A + K[(a, a)].shape[0]
+    return LogDetQuantity(
+        logdet_terms=terms,
+        constant=sp.log(sp.pi * sp.E) * n_A,
+        metadata={"form": "conditional_entropy", "K": K, "A": tuple(A), "C": tuple(C)},
+    )
+
+
+def total_correlation_from_k(
+    K: dict[tuple[int, int], MatrixExpr],
+    nodes: Sequence[int],
+    C: Sequence[int] = (),
+) -> LogDetQuantity:
+    """Total correlation (multi-information) ``TC(V_1; ...; V_n | C)`` (nats).
+
+        TC = sum_i h(V_i | C) - h(V_1..n | C)
+           = sum_{i >= 2} [ log det Sigma_{v_i|C} - log det Sigma_{v_i | v_{<i}, C} ],
+
+    (the chained form; the ``pi e`` constants and the ``i = 1`` terms cancel).
+    Zero iff the nodes are conditionally independent given ``C``. For two nodes
+    this is exactly ``I(V_1; V_2 | C)``.
+    """
+    nodes, C = sorted(nodes), sorted(C)
+    if len(nodes) < 2:
+        raise ValueError("total correlation needs at least two nodes.")
+    if set(nodes) & set(C):
+        raise ValueError(f"nodes and C must be disjoint; got {nodes}, C={C}.")
+    terms: list[tuple[sp.Expr, MatrixExpr]] = []
+    for i, v in enumerate(nodes):
+        if i == 0:
+            continue  # the i = 1 marginal and chain terms cancel
+        terms.append((sp.Integer(1), conditional_covariance_seq(K, v, C)))
+        terms.append((sp.Integer(-1), conditional_covariance_seq(K, v, nodes[:i] + C)))
+    return LogDetQuantity(
+        logdet_terms=terms,
+        metadata={"form": "total_correlation", "K": K,
+                  "nodes": tuple(nodes), "C": tuple(C)},
+    )
+
+
+def gaussian_kl(Sigma0: MatrixExpr, Sigma1: MatrixExpr) -> LogDetQuantity:
+    """KL divergence ``D( CN(0, Sigma0) || CN(0, Sigma1) )`` (nats, complex circular).
+
+        D = tr(Sigma1^{-1} Sigma0) - n + log det Sigma1 - log det Sigma0,
+
+    with no one-half factor (complex circular convention, matching the library).
+    ``Sigma0``, ``Sigma1`` are any square Hermitian-PD matrix expressions of the
+    same (possibly symbolic) dimension ``n`` --- e.g. two conditional covariances
+    of the same DAG under different parameters.
+    """
+    n = Sigma0.shape[0]
+    if Sigma1.shape[0] != n or Sigma0.shape[1] != n or Sigma1.shape[1] != n:
+        raise ValueError(
+            f"Sigma0 and Sigma1 must be square with equal dimension; got "
+            f"{Sigma0.shape} and {Sigma1.shape}."
+        )
+    return LogDetQuantity(
+        logdet_terms=[(sp.Integer(1), Sigma1), (sp.Integer(-1), Sigma0)],
+        trace_terms=[(sp.Integer(1), sp.Inverse(Sigma1) * Sigma0)],
+        constant=-sp.sympify(n),
+        metadata={"form": "gaussian_kl"},
+    )
 
 
 def _cross_conditional(

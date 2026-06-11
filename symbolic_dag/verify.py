@@ -117,10 +117,10 @@ def _matrix_symbols(cmi) -> set[MatrixSymbol]:
     return syms
 
 
-def random_torch_point(
-    cmi, dim: int, *, seed: int = 0, requires_grad: MatrixSymbol | None = None
+def random_point_for_symbols(
+    symbols, dim: int, *, seed: int = 0, requires_grad: MatrixSymbol | None = None
 ) -> dict:
-    """Random complex128 tensors for every symbol of ``cmi`` (covariances HPD).
+    """Random complex128 tensors for an explicit set of matrix symbols.
 
     ``HermitianMatrix`` symbols get a random Hermitian positive-definite matrix;
     other matrix symbols get a random complex matrix. If ``requires_grad`` is a
@@ -141,12 +141,25 @@ def random_torch_point(
         return A @ A.mH + dim * torch.eye(dim, dtype=C)
 
     subs = {}
-    for s in _matrix_symbols(cmi):
+    for s in sorted(symbols, key=lambda s: s.name):
         t = hpd() if isinstance(s, HermitianMatrix) else rc()
         if requires_grad is not None and s == requires_grad:
             t = t.clone().requires_grad_(True)
         subs[s] = t
     return subs
+
+
+def random_torch_point(
+    cmi, dim: int, *, seed: int = 0, requires_grad: MatrixSymbol | None = None
+) -> dict:
+    """Random complex128 tensors for every symbol of ``cmi`` (covariances HPD).
+
+    See :func:`random_point_for_symbols`; the symbols are collected from the
+    CMI's K-blocks.
+    """
+    return random_point_for_symbols(
+        _matrix_symbols(cmi), dim, seed=seed, requires_grad=requires_grad
+    )
 
 
 def _k_to_torch(cmi, subs, dim) -> dict[tuple[int, int], "object"]:
@@ -217,6 +230,13 @@ def check_gradient(
     ``autograd == 2 * symbolic_gradient`` (PyTorch's Wirtinger convention).
     Returns ``{"passed": bool, "max_abs_err": float}``.
     """
+    if isinstance(var, HermitianMatrix):
+        raise NotImplementedError(
+            f"check_gradient uses the Wirtinger convention (autograd == 2*grad), "
+            f"which does not apply to the Hermitian variable {var.name!r}. The "
+            "Hermitian gradient G satisfies df = tr(G dQ) (no factor of 2); verify "
+            "it with hermitian_grad_check instead."
+        )
     torch = _torch()
     G = cmi.wirtinger_grad(var)
     subs = random_torch_point(cmi, dim, seed=seed, requires_grad=var)
@@ -226,4 +246,74 @@ def check_gradient(
     subs_ng = {k: (v.detach() if hasattr(v, "detach") else v) for k, v in subs.items()}
     Gn = to_torch(G, subs_ng, dim)
     err = float((autograd - 2.0 * Gn).abs().max())
+    return {"passed": bool(err < atol), "max_abs_err": err}
+
+
+def _quantity_matrix_symbols(quantity) -> set:
+    """Collect the matrix symbols a quantity's value depends on (for FD checks)."""
+    import sympy as sp
+
+    exprs = []
+    if getattr(quantity, "logdet_terms", None):
+        exprs += [M for _, M in quantity.logdet_terms]
+    if getattr(quantity, "trace_terms", None):
+        exprs += [M for _, M in quantity.trace_terms]
+    if getattr(quantity, "cross", None) is not None:
+        exprs.append(quantity.cross)
+    for _, cmi in getattr(quantity, "terms", []):  # CompositeCMI
+        exprs += [M for _, M in cmi.logdet_terms]
+    syms = set()
+    for e in exprs:
+        syms |= {a for a in sp.preorder_traversal(e) if isinstance(a, MatrixSymbol)}
+    return syms
+
+
+def hermitian_grad_check(
+    quantity, var: MatrixSymbol, dim: int, *, seed: int = 0, atol: float = 1e-5,
+    t: float = 1e-6,
+) -> dict:
+    """Verify a Hermitian-variable gradient ``G`` (``df = tr(G dQ)``) by finite differences.
+
+    For a Hermitian covariance variable ``var`` the gradient convention is
+    ``df = tr(G dQ)`` (no autograd factor of 2). This checks, along a random
+    Hermitian direction ``Delta``, that the directional derivative of
+    ``quantity.evaluate`` equals ``tr(G Delta)``. Works for any quantity with
+    ``.evaluate(subs)`` and ``.wirtinger_grad(var)`` (CMI / LogDetQuantity /
+    CompositeCMI). Returns ``{"passed": bool, "max_abs_err": float}``.
+    """
+    import numpy as np
+    import sympy as sp
+
+    if not isinstance(var, HermitianMatrix):
+        raise TypeError("hermitian_grad_check expects a HermitianMatrix variable.")
+    rng = np.random.default_rng(seed)
+
+    def rc():
+        return rng.standard_normal((dim, dim)) + 1j * rng.standard_normal((dim, dim))
+
+    def hpd():
+        A = rc()
+        return A @ A.conj().T + dim * np.eye(dim)
+
+    syms = _quantity_matrix_symbols(quantity) | {var}
+    base = {s: (hpd() if isinstance(s, HermitianMatrix) else rc()) for s in syms}
+    dim_syms = {s for sym in syms for s in sym.shape if isinstance(s, sp.Symbol)}
+
+    G = quantity.wirtinger_grad(var)
+    A = rc()
+    Delta = A + A.conj().T  # a Hermitian direction
+
+    def value(Qmat):
+        subs = {s: sp.Matrix(v) for s, v in base.items()}
+        subs[var] = sp.Matrix(Qmat)
+        subs.update({s: dim for s in dim_syms})
+        return quantity.evaluate(subs)
+
+    dd = (value(base[var] + t * Delta) - value(base[var] - t * Delta)) / (2 * t)
+    Gsubs = {s: sp.Matrix(v) for s, v in base.items()}
+    Gsubs.update({s: dim for s in dim_syms})
+    r = G.subs(Gsubs).doit()
+    Gn = np.array((r if isinstance(r, sp.MatrixBase) else r.as_explicit()).tolist(), complex)
+    tr = float(np.trace(Gn @ Delta).real)
+    err = abs(dd - tr)
     return {"passed": bool(err < atol), "max_abs_err": err}

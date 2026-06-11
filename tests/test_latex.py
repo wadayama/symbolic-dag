@@ -47,3 +47,20 @@ def test_report_has_cmi_gradient_kkt():
     assert "(KKT)" in rep                                # stationarity line
     # the gradient body should be the derived closed form
     assert "H^{\\dagger}" in rep
+
+
+def test_named_nodes_in_latex():
+    import sympy as sp
+
+    from symbolic_dag import GaussianDAG, hermitian
+
+    d = sp.Symbol("d", positive=True, integer=True)
+    A, B = sp.MatrixSymbol("A", d, d), sp.MatrixSymbol("B", d, d)
+    SX, SY, SZ = (hermitian(s, d) for s in ("Sigma_X", "Sigma_Y", "Sigma_Z"))
+    G = GaussianDAG()
+    G.add_source("X", cov=SX)
+    G.add_node("Y", parents={"X": A}, noise=SY)
+    G.add_node("Z", parents={"Y": B}, noise=SZ)
+    s = G.cmi(A=["X"], B=["Z"], C=["Y"]).to_latex()
+    assert s.startswith(r"I(V_{X}; V_{Z} \mid V_{Y})")
+    assert r"\Sigma_{X\mid Y}" in s and r"\Sigma_{X,Z\mid Y}" in s

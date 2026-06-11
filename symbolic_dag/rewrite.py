@@ -129,10 +129,36 @@ def r_woodbury(e):
     return None
 
 
+def r_sylvester(e):
+    """``log det(I + X1 X2 ... Xk) -> log det(I + canonical cyclic rotation)``.
+
+    The Sylvester / Weinstein--Aronszajn identity ``det(I_m + A B) = det(I_n + B A)``
+    generalises to ``det(I + X1 ... Xk) = det(I + X_{i} ... Xk X1 ... X_{i-1})`` for
+    any cyclic shift. Rotating to the lexicographically smallest shift gives a
+    *canonical*, idempotent normal form (so two differently-arranged capacity
+    log-dets become syntactically equal). Value-preserving; expansion phase only.
+    """
+    if e.func == sp.log and len(e.args) == 1 and isinstance(e.args[0], sp.Determinant):
+        M = e.args[0].arg
+        if isinstance(M, MatAdd) and len(M.args) == 2:
+            idents = [a for a in M.args if isinstance(a, Identity)]
+            others = [a for a in M.args if not isinstance(a, Identity)]
+            if len(idents) == 1 and len(others) == 1 and isinstance(others[0], MatMul):
+                coeff, mm = others[0].as_coeff_mmul()
+                facs = list(mm.args)
+                if len(facs) >= 2:
+                    rotations = [tuple(facs[i:] + facs[:i]) for i in range(len(facs))]
+                    best = min(rotations, key=lambda r: tuple(str(x) for x in r))
+                    if tuple(facs) != best:
+                        inner = Identity(best[0].shape[0]) + coeff * MatMul(*best)
+                        return sp.log(sp.Determinant(inner))
+    return None
+
+
 STRUCTURAL: list[Rule] = [
     r_adjoint_distribute, r_symmetry, r_inverse_cancel, r_matadd_combine,
 ]
-EXPANSION: list[Rule] = [r_det_lemma, r_woodbury]
+EXPANSION: list[Rule] = [r_det_lemma, r_woodbury, r_sylvester]
 
 
 # ----------------------------------------------------------------------

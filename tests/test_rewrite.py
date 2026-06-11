@@ -116,3 +116,32 @@ def test_woodbury_identity_numeric():
     raw = np.linalg.inv(Sn + Un @ Cn @ Vn)
     assert np.max(np.abs(npm(expr, sub) - npm(rew, sub))) < 1e-7
     assert np.max(np.abs(raw - npm(rew, sub))) < 1e-7
+
+
+def test_sylvester_canonical_and_value_preserving():
+    # log det(I + A B) and log det(I + B A) collapse to the SAME canonical form,
+    # and the rewrite preserves the value.
+    from symbolic_dag.rewrite import EXPANSION, run_phases
+
+    n = DIM
+    A, B = MatrixSymbol("A", n, n), MatrixSymbol("B", n, n)
+    e1 = sp.log(sp.Determinant(sp.Identity(n) + A * B))
+    e2 = sp.log(sp.Determinant(sp.Identity(n) + B * A))
+    r1 = run_phases(e1, [EXPANSION])["expr"]
+    r2 = run_phases(e2, [EXPANSION])["expr"]
+    assert r1 == r2  # canonicalised to the same expression
+    # idempotent
+    assert run_phases(r1, [EXPANSION])["expr"] == r1
+    # value preserved
+    d, rng = 3, _rng(7)
+    An = rng.standard_normal((d, d)) + 1j * rng.standard_normal((d, d))
+    Bn = rng.standard_normal((d, d)) + 1j * rng.standard_normal((d, d))
+    sub = {A: sp.Matrix(An), B: sp.Matrix(Bn), n: d}
+
+    def ldet(expr):
+        r = expr.args[0].arg.subs(sub).doit()
+        r = r if isinstance(r, sp.MatrixBase) else r.as_explicit()
+        return np.linalg.slogdet(np.array(r.tolist(), complex))[1]
+
+    raw = np.linalg.slogdet(np.eye(d) + An @ Bn)[1]
+    assert abs(raw - ldet(r1)) < 1e-9

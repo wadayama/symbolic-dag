@@ -187,3 +187,105 @@ class SymbolicCMI(RecursiveExpr):
         from symbolic_dag.latex import report
 
         return report(self, var, expand=expand)
+
+
+@dataclass
+class LogDetQuantity(RecursiveExpr):
+    """A scalar information quantity ``sum_k w_k log det M_k + sum_j v_j tr(T_j) + c``.
+
+    The lazy container shared by the non-CMI quantities (conditional entropy,
+    total correlation, Gaussian KL divergence): weighted log-determinant terms,
+    optional weighted trace terms, and a scalar constant (which may involve the
+    symbolic dimension, e.g. ``n log(pi e)``). All matrices are kept block-free
+    so the Wirtinger engine applies termwise.
+    """
+
+    logdet_terms: list[tuple[sp.Expr, MatrixExpr]] = field(default_factory=list)
+    trace_terms: list[tuple[sp.Expr, MatrixExpr]] = field(default_factory=list)
+    constant: sp.Expr = sp.Integer(0)
+
+    # ---- scalar form -------------------------------------------------
+    def to_expr(self) -> sp.Expr:
+        """The quantity as a scalar sympy expression."""
+        return sp.Add(
+            *[w * sp.log(Determinant(M)) for w, M in self.logdet_terms],
+            *[w * sp.Trace(M) for w, M in self.trace_terms],
+            self.constant,
+        )
+
+    # ---- numeric evaluation -------------------------------------------
+    def evaluate(self, subs: Mapping) -> float:
+        """Numeric value (nats) at a concrete substitution (NumPy)."""
+        val = sum(
+            float(sp.sympify(w).subs(subs)) * _logdet(_to_numpy(M, subs))
+            for w, M in self.logdet_terms
+        )
+        val += sum(
+            float(sp.sympify(w).subs(subs)) * float(np.trace(_to_numpy(M, subs)).real)
+            for w, M in self.trace_terms
+        )
+        return float(val + float(sp.sympify(self.constant).subs(subs)))
+
+    def torch_value(self, subs: Mapping, dim: int):
+        """The quantity as a differentiable real ``torch`` scalar (nats)."""
+        import torch
+
+        from symbolic_dag.verify import to_torch
+
+        scalar_subs = {
+            k: v for k, v in subs.items() if not isinstance(k, sp.MatrixSymbol)
+        }
+
+        def w_val(w):
+            w = sp.sympify(w)
+            return float(w.subs(scalar_subs) if scalar_subs else w)
+
+        val = torch.zeros((), dtype=torch.float64)
+        for w, M in self.logdet_terms:
+            val = val + w_val(w) * torch.linalg.slogdet(to_torch(M, subs, dim))[1]
+        for w, M in self.trace_terms:
+            val = val + w_val(w) * torch.trace(to_torch(M, subs, dim)).real
+        c = sp.sympify(self.constant)
+        if scalar_subs:
+            c = c.subs(scalar_subs)
+        # any remaining free symbol in the constant is the (symbolic) dimension
+        c = c.subs({s: dim for s in c.free_symbols})
+        return val + float(c)
+
+    # ---- symbolic operations ------------------------------------------
+    def wirtinger_grad(self, var: sp.MatrixSymbol) -> MatrixExpr:
+        """Closed-form Wirtinger gradient, termwise over log-det and trace terms."""
+        from sympy import MatrixSymbol, ZeroMatrix
+
+        from symbolic_dag.assumptions import apply_hermitian
+        from symbolic_dag.matderiv import wirtinger_grad_logdet, wirtinger_grad_trace
+        from symbolic_dag.rewrite import simplify_expr
+
+        dF = MatrixSymbol("d" + var.name, *var.shape)
+        G = ZeroMatrix(*var.shape)
+        for w, M in self.logdet_terms:
+            G = G + sp.sympify(w) * wirtinger_grad_logdet(M, var, dF)
+        for w, M in self.trace_terms:
+            G = G + sp.sympify(w) * wirtinger_grad_trace(M, var, dF)
+        return simplify_expr(apply_hermitian(G.doit()), "normalize")
+
+    def check_gradient(
+        self, var: sp.MatrixSymbol, dim: int, *, seed: int = 0, atol: float = 1e-7
+    ) -> dict:
+        """Verify the gradient against PyTorch autograd (``autograd == 2 * grad``)."""
+        import torch
+
+        from symbolic_dag.verify import random_point_for_symbols, to_torch
+
+        syms = {
+            a for M in [m for _, m in self.logdet_terms + self.trace_terms]
+            for a in sp.preorder_traversal(M) if isinstance(a, sp.MatrixSymbol)
+        }
+        syms.add(var)
+        subs = random_point_for_symbols(syms, dim, seed=seed, requires_grad=var)
+        G = self.wirtinger_grad(var)
+        val = self.torch_value(subs, dim)
+        val.backward()
+        subs_ng = {k: (v.detach() if torch.is_tensor(v) else v) for k, v in subs.items()}
+        err = float((subs[var].grad - 2.0 * to_torch(G, subs_ng, dim)).abs().max())
+        return {"passed": bool(err < atol), "max_abs_err": err}
