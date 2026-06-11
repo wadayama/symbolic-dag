@@ -73,6 +73,15 @@ def differential(e: MatrixExpr, F: MatrixSymbol, dF: MatrixSymbol) -> MatrixExpr
 
 def _add_terms(e: MatrixExpr) -> list[MatrixExpr]:
     e = e.doit()
+    # Distribute products over sums so that any ``dF`` / ``dF^H`` ends up as a
+    # top-level factor of each additive term. The ``Inverse`` differential rule
+    # ``-e d(arg) e`` leaves an inner ``MatAdd`` factor (when ``F`` sits inside a
+    # conditioning inverse); without this expansion the conjugate differential
+    # would stay buried in a product and the coefficient extraction would miss it.
+    try:
+        e = e.expand()
+    except (AttributeError, TypeError):  # pragma: no cover - defensive
+        pass
     if getattr(e, "is_ZeroMatrix", False):
         return []
     return list(e.args) if isinstance(e, MatAdd) else [e]
@@ -103,6 +112,42 @@ def wirtinger_grad_logdet(
         if coeff is not None:
             G = coeff if G is None else (G + coeff).doit()
     return ZeroMatrix(*F.shape) if G is None else G
+
+
+def wirtinger_grad_trace(
+    M: MatrixExpr, F: MatrixSymbol, dF: MatrixSymbol
+) -> MatrixExpr:
+    """Closed-form Wirtinger gradient ``d(tr M)/dF^*``, derived symbolically.
+
+    Uses ``d tr(M) = tr(dM)`` and extracts the coefficient of ``dF^H`` by the
+    cyclic property of the trace --- the trace analogue of
+    :func:`wirtinger_grad_logdet`, without the ``M^{-1}`` prefactor. The primary
+    use is an **MMSE / LMMSE** objective ``tr(Sigma_{X|Y})`` (an estimation-error
+    covariance). A numerical library's autograd returns ``2 *`` this gradient.
+    """
+    G = None
+    for t in _add_terms(differential(M, F, dF)):
+        coeff = _coeff_of_conj(t, dF)
+        if coeff is not None:
+            G = coeff if G is None else (G + coeff).doit()
+    return ZeroMatrix(*F.shape) if G is None else G
+
+
+def trace_grad(M: MatrixExpr, var: MatrixSymbol) -> MatrixExpr:
+    """Closed-form Wirtinger gradient ``d(tr M)/dvar^*`` of a matrix expression.
+
+    Convenience wrapper over :func:`wirtinger_grad_trace`: it creates the
+    differential symbol, imposes the Hermitian assumption, and structurally
+    simplifies the result. For an MMSE design, pass the estimation-error
+    covariance ``M = Sigma_{X|Y}`` (e.g. from
+    :func:`symbolic_dag.information.mmse_error_covariance`); ``tr(M)`` is the
+    scalar MMSE and this returns ``d(MMSE)/dvar^*``. Autograd returns ``2 *`` it.
+    """
+    from symbolic_dag.rewrite import simplify_expr
+
+    dF = MatrixSymbol("d" + var.name, *var.shape)
+    G = wirtinger_grad_trace(M, var, dF).doit()
+    return simplify_expr(apply_hermitian(G), "normalize")
 
 
 def wirtinger_grad_cmi(cmi, var: MatrixSymbol) -> MatrixExpr:

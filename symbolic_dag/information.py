@@ -89,6 +89,23 @@ def conditional_covariance_seq(
     return cc[(u, u)]
 
 
+def mmse_error_covariance(
+    K: dict[tuple[int, int], MatrixExpr],
+    target: int,
+    observations: Sequence[int],
+) -> MatrixExpr:
+    """LMMSE estimation-error covariance ``Sigma_{target|observations}``.
+
+    The minimum-mean-square-error covariance of (linearly) estimating the single
+    node ``target`` from the ``observations`` nodes. It is exactly
+    :func:`conditional_covariance_seq` (kept block-free so it can be
+    differentiated): ``tr`` of it is the scalar MMSE, and its Wirtinger gradient
+    w.r.t. a precoder/filter follows from
+    :func:`symbolic_dag.matderiv.trace_grad`.
+    """
+    return conditional_covariance_seq(K, target, observations)
+
+
 def _cross_conditional(
     K: dict[tuple[int, int], MatrixExpr],
     A: Sequence[int],

@@ -31,6 +31,7 @@ from sympy import (
     Inverse,
     MatAdd,
     MatMul,
+    MatPow,
     MatrixExpr,
     MatrixSymbol,
     ZeroMatrix,
@@ -77,6 +78,12 @@ def to_torch(e: MatrixExpr, subs: Mapping[MatrixSymbol, "object"], dim: int):
         return to_torch(e.arg, subs, dim).mH
     if isinstance(e, Inverse):
         return torch.linalg.inv(to_torch(e.arg, subs, dim))
+    if isinstance(e, MatPow):
+        base = to_torch(e.base, subs, dim)
+        p = int(e.exp)
+        if p < 0:
+            base, p = torch.linalg.inv(base), -p
+        return torch.linalg.matrix_power(base, p)
     if isinstance(e, MatAdd):
         out = None
         for a in e.args:
