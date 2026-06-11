@@ -213,8 +213,15 @@ def test_capacity_gradient_closed_form():
 
 
 def test_check_gradient_rejects_hermitian():
+    # the autograd==2x convention does not apply to Hermitian variables, on ANY
+    # quantity type: SymbolicCMI, LogDetQuantity, and CompositeCMI must all raise.
     K, H1, *_ = _mac()
     S1 = hermitian("S1", DIM)
     I = conditional_mutual_information_from_k(K, A=[0], B=[2], C=[1])
     with pytest.raises(NotImplementedError):
         I.check_gradient(S1, dim=3)
+    Q0, Q1 = hermitian("Q0", DIM), hermitian("Q1", DIM)
+    with pytest.raises(NotImplementedError):
+        gaussian_kl(Q0, Q1).check_gradient(Q1, dim=3)
+    with pytest.raises(NotImplementedError):
+        composite_cmi([(1, I)]).check_gradient(S1, dim=3)

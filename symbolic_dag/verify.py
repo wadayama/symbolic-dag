@@ -314,6 +314,8 @@ def hermitian_grad_check(
     Gsubs.update({s: dim for s in dim_syms})
     r = G.subs(Gsubs).doit()
     Gn = np.array((r if isinstance(r, sp.MatrixBase) else r.as_explicit()).tolist(), complex)
-    tr = float(np.trace(Gn @ Delta).real)
+    # compare as COMPLEX: for a correct (Hermitian) G, tr(G Delta) is real, so a
+    # spurious anti-Hermitian component would show up as an imaginary residual.
+    tr = complex(np.trace(Gn @ Delta))
     err = abs(dd - tr)
     return {"passed": bool(err < atol), "max_abs_err": err}

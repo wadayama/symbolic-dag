@@ -275,8 +275,15 @@ class LogDetQuantity(RecursiveExpr):
         """Verify the gradient against PyTorch autograd (``autograd == 2 * grad``)."""
         import torch
 
+        from symbolic_dag.assumptions import HermitianMatrix
         from symbolic_dag.verify import random_point_for_symbols, to_torch
 
+        if isinstance(var, HermitianMatrix):
+            raise NotImplementedError(
+                f"check_gradient uses the Wirtinger convention (autograd == 2*grad), "
+                f"which does not apply to the Hermitian variable {var.name!r}; use "
+                "hermitian_grad_check (df = tr(G dQ)) instead."
+            )
         syms = {
             a for M in [m for _, m in self.logdet_terms + self.trace_terms]
             for a in sp.preorder_traversal(M) if isinstance(a, sp.MatrixSymbol)

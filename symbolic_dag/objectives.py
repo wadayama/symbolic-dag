@@ -92,12 +92,19 @@ class CompositeCMI:
         """
         import torch
 
+        from symbolic_dag.assumptions import HermitianMatrix
         from symbolic_dag.verify import (
             _matrix_symbols,
             random_point_for_symbols,
             to_torch,
         )
 
+        if isinstance(var, HermitianMatrix):
+            raise NotImplementedError(
+                f"check_gradient uses the Wirtinger convention (autograd == 2*grad), "
+                f"which does not apply to the Hermitian variable {var.name!r}; use "
+                "hermitian_grad_check (df = tr(G dQ)) instead."
+            )
         syms = set()
         for _, cmi in self.terms:
             syms |= _matrix_symbols(cmi)
