@@ -17,6 +17,7 @@ fixpoint, before the next.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable
 
 import sympy as sp
@@ -75,6 +76,54 @@ def r_matadd_combine(e):
         z = e.doit()
         if z == 0 or getattr(z, "is_ZeroMatrix", False):
             return ZeroMatrix(*e.shape)
+    return None
+
+
+# ----------------------------------------------------------------------
+# display rules (cosmetic, value-preserving --- the "display" strategy)
+# ----------------------------------------------------------------------
+def r_block_collapse(e):
+    """Collapse block-matrix algebra (sums/products of blocks) into one block.
+
+    The lazy core deliberately keeps block Schur products unevaluated; for
+    *presentation* the collapsed single block is the readable form.
+    """
+    from sympy.matrices.expressions.blockmatrix import BlockMatrix
+
+    if isinstance(e, (MatMul, MatAdd, Inverse)) and e.has(BlockMatrix):
+        try:
+            c = sp.block_collapse(e)
+        except Exception:
+            return None
+        if c != e:
+            return c
+    return None
+
+
+def r_distribute(e):
+    """Distribute a product over a sum (``H (N + T) -> H N + H T``).
+
+    Cancelling pairs hidden inside a product only become visible to
+    :func:`r_collect` once distributed. (The gradient engine needed the same
+    fix internally: ``matderiv._add_terms`` expands for the same reason.)
+    """
+    if isinstance(e, MatMul) and any(isinstance(a, MatAdd) for a in e.args):
+        x = e.expand()
+        if x != e:
+            return x
+    return None
+
+
+def r_collect(e):
+    """Collect like terms in a sum (``N + T - T -> N``).
+
+    ``MatAdd`` does not combine syntactically equal terms on construction;
+    ``doit(deep=False)`` does, without touching the term subtrees.
+    """
+    if isinstance(e, MatAdd):
+        z = e.doit(deep=False)
+        if z != e:
+            return z
     return None
 
 
@@ -159,6 +208,7 @@ STRUCTURAL: list[Rule] = [
     r_adjoint_distribute, r_symmetry, r_inverse_cancel, r_matadd_combine,
 ]
 EXPANSION: list[Rule] = [r_det_lemma, r_woodbury, r_sylvester]
+DISPLAY: list[Rule] = [r_block_collapse, r_distribute, r_collect]
 
 
 # ----------------------------------------------------------------------
@@ -214,6 +264,12 @@ def run_phases(e, phases: list[list[Rule]], max_iter: int = 50) -> dict:
 _STRATEGIES = {
     "normalize": [STRUCTURAL],
     "capacity": [STRUCTURAL, EXPANSION],
+    # presentation cleanup: normalize first (the proven phasing), then a joint
+    # fixpoint where distribution / collection / block collapse interleave with
+    # the structural rules (a distribution exposes an inverse-cancel, which
+    # exposes a collect, ...). Value-preserving; opt-in, so the default
+    # "normalize" behaviour (and proves_zero) is untouched.
+    "display": [STRUCTURAL, STRUCTURAL + DISPLAY],
 }
 
 
@@ -224,6 +280,74 @@ def simplify_expr(e, strategy: str = "normalize"):
             f"unknown strategy {strategy!r}; choose from {sorted(_STRATEGIES)}."
         )
     return run_phases(e, _STRATEGIES[strategy])["expr"]
+
+
+def _signed_logdet_pairs(expr):
+    """Parse a scalar ``+/- log det(M) +/- ...`` sum into ``[(sign, M), ...]``.
+
+    Returns ``None`` if any term is not a plain signed log-det (the caller
+    falls back to matrix-level simplification).
+    """
+    if expr == 0:
+        return []
+    pairs = []
+    for t in (expr.as_ordered_terms() if isinstance(expr, sp.Add) else [expr]):
+        sign = 1
+        if isinstance(t, sp.Mul):
+            c, rest = t.as_coeff_Mul()
+            if c not in (1, -1):
+                return None
+            sign, t = int(c), rest
+        if (
+            t.func == sp.log
+            and len(t.args) == 1
+            and isinstance(t.args[0], sp.Determinant)
+        ):
+            pairs.append((sign, t.args[0].arg))
+        else:
+            return None
+    return pairs
+
+
+def simplify_logdet_terms(
+    terms: list[tuple[int, sp.Basic]], strategy: str = "normalize"
+) -> "list[tuple[int, sp.Basic]] | None":
+    """Simplify signed log-det terms at the SCALAR level, where the log-det rules live.
+
+    :func:`simplify_cmi` maps :func:`simplify_expr` over the bare matrices, so
+    the log-det-level EXPANSION rules (determinant lemma, Sylvester) can never
+    fire there --- they match ``log(det(.))`` nodes. This function runs the
+    strategy on each ``log det M_k`` term instead (so ``"capacity"`` can split
+    ``log det(N + H Q H^H)`` into ``log det N + log det(I + .)``), flattens the
+    results in order, and drops syntactically cancelling ``+/- log det M``
+    pairs (which is how ``log det N`` cancels to leave the capacity form).
+
+    Returns the new ``[(sign, matrix), ...]`` list (order-preserving), or
+    ``None`` if some term did not stay a pure signed log-det sum --- the caller
+    should then fall back to the matrix-level path.
+    """
+    if strategy not in _STRATEGIES:
+        raise ValueError(
+            f"unknown strategy {strategy!r}; choose from {sorted(_STRATEGIES)}."
+        )
+    flat: list[tuple[int, sp.Basic]] = []
+    for s, M in terms:
+        out = run_phases(sp.log(sp.Determinant(M)), _STRATEGIES[strategy])["expr"]
+        pairs = _signed_logdet_pairs(out)
+        if pairs is None:
+            return None
+        flat.extend((s * ps, PM) for ps, PM in pairs)
+    net: Counter = Counter()
+    for s, M in flat:
+        net[M] += s
+    result, seen = [], set()
+    for s, M in flat:
+        if M in seen:
+            continue
+        seen.add(M)
+        n = net[M]
+        result.extend([(1 if n > 0 else -1, M)] * abs(n))
+    return result
 
 
 def proves_zero(e) -> bool:

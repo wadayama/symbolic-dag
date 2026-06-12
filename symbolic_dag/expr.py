@@ -114,6 +114,54 @@ class SymbolicCMI(RecursiveExpr):
 
         return simplify_cmi(self, strategy=strategy)
 
+    def two_term(self) -> "SymbolicCMI":
+        """The 2-term entropy-difference form ``I = log det S_{B|C} - log det S_{B|AC}``.
+
+        Folds the Schur identity ``det S_{AB|C} = det S_{A|C} det S_{B|AC}``
+        into the 3-term structural form, eliminating the joint ``AB`` block ---
+        the form papers use, and the natural starting point for the capacity
+        rewriting (see :func:`symbolic_dag.rewrite.simplify_logdet_terms`).
+        When ``B`` (or, failing that, ``A``) is a single node the conditional
+        covariances are built by sequential conditioning, so the result is
+        completely block-free.
+
+        Returns a new ``SymbolicCMI`` with the same ``A/B/C``, metadata
+        (including the K-blocks, so ``.check`` still verifies against the
+        independent Schur path) and cross block; only ``logdet_terms`` change.
+        """
+        from symbolic_dag.information import (
+            conditional_covariance,
+            conditional_covariance_seq,
+        )
+
+        K = self.metadata.get("K")
+        if K is None:
+            raise ValueError(
+                "two_term() needs the K-blocks in metadata; build the CMI via "
+                "conditional_mutual_information_from_k or GaussianDAG.cmi."
+            )
+        A, B, C = list(self.A), list(self.B), list(self.C)
+        if len(B) == 1:
+            side = "B"
+            s1 = conditional_covariance_seq(K, B[0], C)
+            s2 = conditional_covariance_seq(K, B[0], A + C)
+        elif len(A) == 1:
+            side = "A"
+            s1 = conditional_covariance_seq(K, A[0], C)
+            s2 = conditional_covariance_seq(K, A[0], B + C)
+        else:
+            side = "B"
+            s1 = conditional_covariance(K, sorted(B), sorted(C))
+            s2 = conditional_covariance(K, sorted(B), sorted(A + C))
+        md = dict(self.metadata)
+        md["form"] = "two_term_logdet"
+        md["two_term_side"] = side
+        return SymbolicCMI(
+            definitions=self.definitions, output=self.output, metadata=md,
+            A=self.A, B=self.B, C=self.C,
+            logdet_terms=[(1, s1), (-1, s2)], cross=self.cross,
+        )
+
     def is_conditionally_independent(self) -> bool:
         """Prove ``A _||_ B | C`` by reducing the cross block to the zero matrix."""
         from symbolic_dag.rewrite import proves_zero
@@ -176,17 +224,32 @@ class SymbolicCMI(RecursiveExpr):
         return check_gradient(self, var, dim, **kwargs)
 
     # ---- LaTeX hand-off ----------------------------------------------
-    def to_latex(self, *, expand: bool = False, simplify: str | None = "normalize") -> str:
-        """Render the CMI as LaTeX (see :mod:`symbolic_dag.latex`)."""
+    def to_latex(
+        self,
+        *,
+        expand: bool = False,
+        simplify: str | None = "normalize",
+        det_style: str = "bars",
+    ) -> str:
+        """Render the CMI as LaTeX (see :mod:`symbolic_dag.latex`).
+
+        ``det_style="det"`` writes determinants as ``det(X)`` instead of ``|X|``.
+        """
         from symbolic_dag.latex import cmi_to_latex
 
-        return cmi_to_latex(self, expand=expand, simplify=simplify)
+        return cmi_to_latex(self, expand=expand, simplify=simplify, det_style=det_style)
 
-    def report(self, var: sp.MatrixSymbol | None = None, *, expand: bool = False) -> str:
+    def report(
+        self,
+        var: sp.MatrixSymbol | None = None,
+        *,
+        expand: bool = False,
+        det_style: str = "bars",
+    ) -> str:
         """LaTeX ``align*`` block: the CMI and (if ``var`` given) its gradient and KKT."""
         from symbolic_dag.latex import report
 
-        return report(self, var, expand=expand)
+        return report(self, var, expand=expand, det_style=det_style)
 
 
 @dataclass

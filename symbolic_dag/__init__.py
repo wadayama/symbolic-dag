@@ -48,7 +48,7 @@ from symbolic_dag.matderiv import (
     wirtinger_grad_trace,
 )
 from symbolic_dag.numeric import numpy_cmi, numpy_k_blocks
-from symbolic_dag.rewrite import proves_zero, simplify_expr
+from symbolic_dag.rewrite import proves_zero, simplify_expr, simplify_logdet_terms
 from symbolic_dag.solve import solve_stationary
 from symbolic_dag.verify import hermitian_grad_check, random_torch_point, to_torch
 
@@ -83,6 +83,7 @@ __all__ = [
     "random_torch_point",
     "render_pdf",
     "simplify_expr",
+    "simplify_logdet_terms",
     "solve_stationary",
     "to_markdown",
     "to_mathematica",
