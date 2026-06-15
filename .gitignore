@@ -23,6 +23,5 @@ wheels/
 *.out
 
 # Local-only throwaway prototypes (kept locally for provenance, not published)
-smoke/
-smoke_answer/
-smoke_grad/
+# Anything with a smoke* prefix is local-only and never uploaded.
+smoke*/
