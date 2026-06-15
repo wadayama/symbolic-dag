@@ -52,16 +52,6 @@ siblings share the same K-recursion / Schur-complement / conditional-MI design.
 | [`cmi-dag`](https://github.com/wadayama/cmi-dag) | Multi-root + conditional MI; rate regions; PGA optimization (numerical, PyTorch). | MAC, BC, IC, wiretap, multi-terminal rate regions. |
 | **`symbolic-dag`** | **Symbolic CMI, simplification, Wirtinger gradients / KKT (SymPy).** | **Closed-form regime thresholds, d-separation proofs, optimal-precoder conditions; explaining what cmi-dag discovers.** |
 
-> **Not a drop-in API — adjust the syntax to the library you use.** The family
-> shares the same modelling and conventions (index-based DAGs with a root prefix,
-> the K-recursion, complex / Wirtinger, nats), so the libraries *look* alike — but
-> the exact function names, signatures, and argument shapes differ slightly from
-> one to the next (e.g. `compute_k_blocks_multiroot(..., root_covs=, noise_covs=)`
-> here vs. `compute_k_blocks(..., input_cov=, ...)` in `gaussian-dag`). Treat code
-> or an example from a sibling library as a close template, **not a literal
-> paste**: don't expect full cross-library compatibility, and port with minor
-> syntax tweaks to match the library you actually import.
-
 > **Funding.** This work was supported by JST, CRONOS, Japan Grant Number **JPMJCS25N5**.
 
 ---
@@ -355,6 +345,17 @@ What you can read off the canvas:
 > the A / B / C roles, and *Export code* emits the exact `symbolic-dag` script for
 > that DAG — even if you never click *Compute*. Sketch the network here, then drop
 > the generated `GaussianDAG` (or functional-core) code into your own program.
+
+> **The exported code targets `symbolic-dag` — not a drop-in API across the
+> family.** The sibling libraries share the same modelling and conventions
+> (index-based DAGs with a root prefix, the K-recursion, complex / Wirtinger,
+> nats), so they *look* alike — but the exact function names, signatures, and
+> argument shapes differ slightly from one to the next (e.g.
+> `compute_k_blocks_multiroot(..., root_covs=, noise_covs=)` here vs.
+> `compute_k_blocks(..., input_cov=, ...)` in `gaussian-dag`). If you want to run
+> the drawn DAG under a sibling library, treat the export as a close template,
+> **not a literal paste**, and port it with minor syntax tweaks to match the
+> library you actually import.
 
 Everything runs **fully offline** (Cytoscape.js + KaTeX are vendored), and a
 killable-process timeout keeps the UI responsive even on an over-large graph.
