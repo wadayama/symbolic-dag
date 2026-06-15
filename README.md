@@ -35,6 +35,12 @@ evaluated numerically. Because the matrices stay opaque, the closed form is
 **independent of the node dimension** — the scalar case is the `1×1`
 specialisation of the same block-symbolic engine.
 
+> **Prefer to click rather than code?** A bundled GUI lets you *draw* the DAG,
+> assign the roles A / B / C to nodes, and read off the closed-form CMI, its
+> Wirtinger gradient, the d-separation proof, and even runnable `symbolic-dag`
+> source — all offline, all machine-verified. See **[Interactive demo
+> (GUI)](#interactive-demo-gui)** below.
+
 ## Sister libraries
 
 `symbolic-dag` is the symbolic member of the Gaussian-DAG family. Its numerical
@@ -84,6 +90,7 @@ require the `cmi-dag` repository to be available locally (a sibling checkout, or
 ```
 symbolic-dag/
 ├── symbolic_dag/    core library (13 modules)
+├── demo/            interactive GUI — draw a DAG, read off the closed-form CMI
 ├── tests/           pytest suite (core + cmi-dag cross-validation)
 ├── examples/        runnable scripts
 ├── docs/            tutorial walkthrough
@@ -270,6 +277,51 @@ A four-part walkthrough is available under [`docs/`](docs/README.md):
 2. [Proving conditional independence (the rewrite engine)](docs/tutorial-2-proving-conditional-independence.md)
 3. [Closed-form Wirtinger gradients and KKT](docs/tutorial-3-wirtinger-gradients-and-kkt.md)
 4. [The builder and cross-validation against cmi-dag](docs/tutorial-4-builder-and-cmidag-crosscheck.md)
+
+---
+
+## Interactive demo (GUI)
+
+Draw the network instead of writing it. The bundled [`demo/`](demo/README.md) is
+a standalone desktop app (pywebview) where you sketch a linear Gaussian DAG like
+in a paint program, click nodes to assign the roles **A / B / C**, and instantly
+get the symbolic closed form of `I(V_A; V_B | V_C)` — the same engine as the
+library, just driven by mouse.
+
+<p align="center">
+  <img src="docs/figures/dag-demo.png" alt="dag-demo GUI: a drawn linear Gaussian DAG with A/B/C roles, showing the closed-form conditional mutual information, its Wirtinger gradient, and the symbolic d-separation verdict" width="100%">
+</p>
+
+What you can read off the canvas:
+
+- **Closed-form CMI** — the structural log-det form, plus the expanded
+  two-term entropy difference and, when it applies, the **capacity form**
+  `log det(I + ·)`.
+- **One-click d-separation proof** — assign an `A → B → C` chain and the
+  rewrite engine returns `I(X;Z|Y) = 0` *symbolically* (any dimension), not a
+  small number.
+- **Wirtinger gradients** — select an edge for `∂I/∂H*`, or mark a transmit node
+  as a **precoder** for `∂I/∂F*`.
+- **LMMSE** — the Wiener filter `W` and the error covariance `E = Σ_{A|B,C}`,
+  the bridge between information and estimation error.
+- **PyTorch numerical check** — every displayed form is matched against an
+  independent computation at random complex points; a wrong formula is never
+  shown.
+- **Code export** — turn the drawn graph into runnable `symbolic-dag` source
+  (high-level builder or low-level functional core), then paste it into a
+  script. Use the GUI as a DAG builder.
+
+Everything runs **fully offline** (Cytoscape.js + KaTeX are vendored), and a
+killable-process timeout keeps the UI responsive even on an over-large graph.
+
+```bash
+cd demo
+uv sync                     # first time only (reuses the library via path = "..")
+uv run python desktop.py    # opens a native window; an A→B→C chain is preloaded
+```
+
+See [`demo/README.md`](demo/README.md) for the full usage table and the JS↔Python
+bridge API.
 
 ---
 

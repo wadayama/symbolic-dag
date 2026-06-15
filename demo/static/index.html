@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>symbolic-dag demo — draw a DAG, get the closed-form CMI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="style.css">
+<script src="vendor/cytoscape.min.js"></script>
+<script src="vendor/katex/katex.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>symbolic-dag <span>demo</span></h1>
+  <div class="toolbar">
+    <button id="btn-add">+ Add node</button>
+    <button id="btn-connect" class="toggle">→ Connect mode</button>
+    <span class="sep"></span>
+    <span class="hint">Role for selected node:</span>
+    <button id="btn-role-A" class="role role-A">A</button>
+    <button id="btn-role-B" class="role role-B">B</button>
+    <button id="btn-role-C" class="role role-C">C</button>
+    <button id="btn-role-none" class="role">None</button>
+    <button id="btn-precoder" title="Toggle a transmit precoder F on the selected node (its outgoing edges become H·F)">Precoder F</button>
+    <span class="sep"></span>
+    <button id="btn-delete">Delete</button>
+    <button id="btn-clear">Clear all</button>
+    <span class="sep"></span>
+    <label><input type="checkbox" id="opt-expand" checked> Show expanded form</label>
+    <label><input type="checkbox" id="opt-lmmse"> Show LMMSE (W / E)</label>
+    <label><input type="checkbox" id="opt-check" checked> PyTorch numerical check</label>
+    <span class="sep"></span>
+    <button id="btn-export">Export code</button>
+    <button id="btn-compute" class="primary">Compute I(A;B|C)</button>
+  </div>
+</header>
+
+<main>
+  <div id="cy"></div>
+  <div id="splitter" title="Drag to resize the panel"></div>
+  <aside id="results">
+    <p id="status" class="status">
+      Double-click to add a node / in connect mode click parent then child /
+      select a node and assign A, B, or C, then compute.
+      Select an edge and compute to see the Wirtinger gradient w.r.t. its gain H.
+      Add a "Precoder F" to a transmit node so its outgoing edges become H·F,
+      then select that node and compute to see the precoder gradient ∂I/∂F*.
+    </p>
+    <section id="out" hidden>
+      <h2>Model</h2>
+      <div id="model" class="math-block"></div>
+      <h2>Conditional mutual information</h2>
+      <div id="cmi" class="math-block"></div>
+      <div id="badges"></div>
+      <div id="expanded-wrap" hidden>
+        <h2>Expanded form</h2>
+        <div id="expanded" class="math-block scroll"></div>
+      </div>
+      <div id="grad-wrap" hidden>
+        <h2>Wirtinger gradient</h2>
+        <div id="grad" class="math-block scroll"></div>
+      </div>
+      <div id="lmmse-wrap" hidden>
+        <h2>LMMSE estimation — Wiener filter W and error covariance E (estimating A from B, C)</h2>
+        <div id="lmmse" class="math-block scroll"></div>
+      </div>
+      <div id="code-wrap" hidden>
+        <h2>Generated code (symbolic-dag)</h2>
+        <div class="code-controls">
+          <button id="btn-code-high" class="codelvl active">High-level (builder)</button>
+          <button id="btn-code-low" class="codelvl">Low-level (functional)</button>
+          <button id="btn-code-copy" class="copy">Copy</button>
+        </div>
+        <pre id="code" class="code-block scroll"></pre>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<footer>
+  Node = vertex of a linear Gaussian DAG (in-degree-0 nodes are automatically
+  sources with covariance Σ; the rest are V = Σ H·parent + N). All quantities are
+  complex, arbitrary-dimension symbolic matrices.
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

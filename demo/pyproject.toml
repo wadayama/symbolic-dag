@@ -1,0 +1,16 @@
+[project]
+name = "dag-demo"
+version = "0.1.0"
+description = "Standalone pywebview app for symbolic-dag: draw a Gaussian DAG, pick A/B/C, get the closed-form CMI."
+requires-python = ">=3.12"
+dependencies = [
+    "symbolic-dag",
+    "pywebview>=6.2.1",
+    "pydantic>=2.13.4",
+]
+
+[tool.uv.sources]
+symbolic-dag = { path = "..", editable = true }
+
+[tool.uv]
+package = false
