@@ -337,8 +337,14 @@ What you can read off the canvas:
   independent computation at random complex points; a wrong formula is never
   shown.
 - **Code export** — turn the drawn graph into runnable `symbolic-dag` source
-  (high-level builder or low-level functional core), then paste it into a
-  script. Use the GUI as a DAG builder.
+  (high-level `GaussianDAG` builder or low-level functional core), with a Copy
+  button, then paste it into a script or notebook.
+
+> **Use it as a GUI DAG-designer.** Because of code export, the demo doubles as a
+> visual front-end for the library: lay out the nodes and edges by mouse, assign
+> the A / B / C roles, and *Export code* emits the exact `symbolic-dag` script for
+> that DAG — even if you never click *Compute*. Sketch the network here, then drop
+> the generated `GaussianDAG` (or functional-core) code into your own program.
 
 Everything runs **fully offline** (Cytoscape.js + KaTeX are vendored), and a
 killable-process timeout keeps the UI responsive even on an over-large graph.

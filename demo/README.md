@@ -6,6 +6,11 @@ information `I(V_A; V_B | V_C)` is displayed. The backend is the
 [`symbolic-dag`](../README.md) library in the parent directory (an editable path
 dependency, `path = ".."`).
 
+It also works as a **GUI DAG-designer**: thanks to "Export code", you can lay out
+a DAG by mouse and get the exact runnable `symbolic-dag` script for it (high-level
+`GaussianDAG` builder or low-level functional core) — even without computing the
+CMI. Sketch the network here, copy the code into your own program.
+
 ## Run
 
 ```bash
