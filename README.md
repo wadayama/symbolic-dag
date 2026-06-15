@@ -135,6 +135,35 @@ The proof is a **matrix identity**: the rewrite engine reduces the cross
 conditional covariance `Σ_{XZ|Y}` to the zero matrix, so `I(X;Z|Y) = 0` for every
 dimension at once.
 
+### The same DAG, written with the named-node builder
+
+If you prefer readable node names to integer indices, `GaussianDAG` is a thin
+convenience layer over the functional core — `add_source` / `add_node` / `cmi`,
+nodes named `"X"`, `"Y"`, `"Z"`. It adds no new capability; it only relabels (and
+the LaTeX hand-off then prints `V_X` instead of `V_0`). Here is the **same chain**
+`X → Y → Z`:
+
+```python
+import sympy as sp
+from symbolic_dag import GaussianDAG, hermitian
+
+d = sp.Symbol("d", positive=True, integer=True)
+A, B = sp.MatrixSymbol("A", d, d), sp.MatrixSymbol("B", d, d)
+
+dag = GaussianDAG()
+dag.add_source("X", cov=hermitian("Sigma_X", d))                  # parentless source
+dag.add_node("Y", parents={"X": A}, noise=hermitian("Sigma_Y", d))  # Y = A·X + N_Y
+dag.add_node("Z", parents={"Y": B}, noise=hermitian("Sigma_Z", d))  # Z = B·Y + N_Z
+
+I = dag.cmi(["X"], ["Z"], ["Y"])          # I(V_X; V_Z | V_Y)
+print(I.is_conditionally_independent())   # True — same result, readable names
+```
+
+`cov` and `noise` take **Hermitian PD matrix symbols** (`hermitian(name, d)`),
+gains are plain `MatrixSymbol`s; sources must be added before their children
+(topological order). The drawn-DAG demo's *Export code → High-level (builder)*
+emits exactly this form.
+
 ### Derive a closed-form precoder gradient (cross-checked with cmi-dag)
 
 For the precoder gadget `Y = (H F) X0 + X1 + N`, the gradient of `I(X0; Y | X1)`
