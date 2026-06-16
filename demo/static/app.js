@@ -180,6 +180,69 @@ function katexInto(el, lines) {
   }
 }
 
+/* ---- output format switching (LaTeX rendered as math / Mathematica source) -- */
+
+let outputFormat = "rendered"; // "rendered" (LaTeX, shown as math) | "mathematica"
+let lastData = null; // last compute payload, re-rendered on a format switch
+
+/* Per-block content as {latex: [...], math: [...]|null} (or {note} for the
+   LMMSE multi-node case). Single source of truth shared by display and Copy. */
+function blockContent(data, key) {
+  switch (key) {
+    case "model":
+      return { latex: data.model || [], math: null };
+    case "cmi":
+      return { latex: [data.latex], math: data.mathematica ? [data.mathematica] : null };
+    case "expanded": {
+      const latex = [data.latex_expanded];
+      if (data.latex_capacity) latex.push(data.latex_capacity);
+      let math = null;
+      if (data.mathematica_expanded) {
+        math = [data.mathematica_expanded];
+        if (data.mathematica_capacity) math.push(data.mathematica_capacity);
+      }
+      return { latex, math };
+    }
+    case "grad":
+      return {
+        latex: [data.gradient.latex],
+        math: data.gradient.mathematica ? [data.gradient.mathematica] : null,
+      };
+    case "lmmse":
+      if (data.lmmse.note) return { note: data.lmmse.note };
+      return {
+        latex: [data.lmmse.W, data.lmmse.E],
+        math:
+          data.lmmse.W_mathematica && data.lmmse.E_mathematica
+            ? [data.lmmse.W_mathematica, data.lmmse.E_mathematica]
+            : null,
+      };
+    default:
+      return { latex: [], math: null };
+  }
+}
+
+/* Pick the lines for the active format (Mathematica falls back to LaTeX source
+   when no Wolfram form exists, so a block is never blank). */
+function activeLines(content) {
+  return outputFormat === "mathematica" && content.math && content.math.length
+    ? content.math
+    : content.latex;
+}
+
+/* Fill a math block either as rendered KaTeX or as a raw-source <pre>. */
+function renderBlock(el, content) {
+  if (outputFormat === "rendered") {
+    katexInto(el, content.latex);
+    return;
+  }
+  el.innerHTML = "";
+  const pre = document.createElement("pre");
+  pre.className = "code-block scroll";
+  pre.textContent = activeLines(content).join("\n\n");
+  el.appendChild(pre);
+}
+
 /* Reach the symbolic engine through the pywebview bridge (desktop.py's Api).
    The result payload matches core.run_compute; errors arrive as {_error}. */
 async function callCompute(body) {
@@ -278,9 +341,9 @@ document.getElementById("btn-code-copy").addEventListener("click", async () => {
 });
 
 function render(data) {
+  lastData = data;
   document.getElementById("out").hidden = false;
-  katexInto(document.getElementById("model"), data.model);
-  katexInto(document.getElementById("cmi"), [data.latex]);
+  resetCopyButtons();
 
   const badges = document.getElementById("badges");
   badges.innerHTML = "";
@@ -309,35 +372,86 @@ function render(data) {
     badges.appendChild(b);
   }
 
+  applyFormat(data);
+}
+
+/* Fill the format-sensitive blocks (model/CMI/expanded/gradient/LMMSE) in the
+   current outputFormat. Badges are format-agnostic and stay as render() set them.
+   Also toggles the optional wraps' visibility and disables Copy on absent blocks. */
+function applyFormat(data) {
+  renderBlock(document.getElementById("model"), blockContent(data, "model"));
+  renderBlock(document.getElementById("cmi"), blockContent(data, "cmi"));
+
   const expWrap = document.getElementById("expanded-wrap");
   expWrap.hidden = !data.latex_expanded;
   if (data.latex_expanded) {
-    const lines = [data.latex_expanded];
-    if (data.latex_capacity) lines.push(data.latex_capacity);
-    katexInto(document.getElementById("expanded"), lines);
+    renderBlock(document.getElementById("expanded"), blockContent(data, "expanded"));
   }
 
   const gradWrap = document.getElementById("grad-wrap");
   gradWrap.hidden = !data.gradient;
   if (data.gradient) {
-    katexInto(document.getElementById("grad"), [data.gradient.latex]);
+    renderBlock(document.getElementById("grad"), blockContent(data, "grad"));
   }
 
   const lmWrap = document.getElementById("lmmse-wrap");
   lmWrap.hidden = !data.lmmse;
   if (data.lmmse) {
     const el = document.getElementById("lmmse");
-    if (data.lmmse.note) {
+    const content = blockContent(data, "lmmse");
+    if (content.note) {
+      // a note has no LaTeX/Mathematica variant — plain text in every mode
       el.innerHTML = "";
       const n = document.createElement("div");
       n.className = "status";
-      n.textContent = data.lmmse.note;
+      n.textContent = content.note;
       el.appendChild(n);
     } else {
-      katexInto(el, [data.lmmse.W, data.lmmse.E]);
+      renderBlock(el, content);
     }
   }
 }
+
+/* ---- format toggle ------------------------------------------------------- */
+
+function setFormat(fmt) {
+  outputFormat = fmt;
+  for (const [id, f] of [
+    ["btn-fmt-rendered", "rendered"],
+    ["btn-fmt-math", "mathematica"],
+  ]) {
+    document.getElementById(id).classList.toggle("active", f === fmt);
+  }
+  resetCopyButtons();
+  if (lastData) applyFormat(lastData); // re-render only, no recompute
+}
+document.getElementById("btn-fmt-rendered").addEventListener("click", () => setFormat("rendered"));
+document.getElementById("btn-fmt-math").addEventListener("click", () => setFormat("mathematica"));
+
+/* ---- per-block copy ------------------------------------------------------- */
+
+function resetCopyButtons() {
+  document.querySelectorAll(".copy-block").forEach((b) => (b.textContent = "Copy"));
+}
+
+/* The text a block contributes to the clipboard in the active format. */
+function copyTextFor(key) {
+  const content = blockContent(lastData, key);
+  if (content.note) return content.note;
+  return activeLines(content).join("\n\n");
+}
+
+document.getElementById("out").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest(".copy-block");
+  if (!btn || !lastData) return;
+  resetCopyButtons();
+  try {
+    await navigator.clipboard.writeText(copyTextFor(btn.dataset.copy));
+    btn.textContent = "Copied ✓";
+  } catch {
+    btn.textContent = "Copy failed";
+  }
+});
 
 /* ---- resizable results panel ----------------------------------------- */
 

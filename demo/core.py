@@ -33,6 +33,7 @@ from symbolic_dag import (
     random_torch_point,
     simplify_expr,
     simplify_logdet_terms,
+    to_mathematica,
     to_torch,
 )
 from symbolic_dag.expr import SymbolicCMI
@@ -183,6 +184,26 @@ def _expanded_latex(cmi) -> str:
     return cmi.to_latex(expand=True, det_style="det")
 
 
+def _gradient_payload(G, var) -> dict[str, str]:
+    """LaTeX + Mathematica of an already-computed Wirtinger gradient ``G``.
+
+    ``var`` is the differentiation symbol (its ``sp.latex`` labels ``∂I/∂var*``).
+    The Mathematica form is a deterministic print of the same ``G`` whose value is
+    checked by ``check_gradient``; guard it so a print failure never drops the
+    LaTeX.
+    """
+    v = sp.latex(var)
+    grad = {
+        "var": v,
+        "latex": rf"\frac{{\partial I}}{{\partial {v}^{{*}}}} = {sp.latex(G)}",
+    }
+    try:
+        grad["mathematica"] = to_mathematica(G)
+    except Exception:
+        pass
+    return grad
+
+
 def _compute(graph: GraphIn) -> dict[str, Any]:
     A = [n.id for n in graph.nodes if n.role == "A"]
     B = [n.id for n in graph.nodes if n.role == "B"]
@@ -198,6 +219,13 @@ def _compute(graph: GraphIn) -> dict[str, Any]:
         "latex": cmi.to_latex(det_style="det"),
         "independent": bool(cmi.is_conditionally_independent()),
     }
+    # Mathematica/Wolfram form of the CMI: a deterministic print of the SAME
+    # verified symbolic expression (so it inherits the PyTorch check below).
+    # Formatting must never block the verified result, so guard it.
+    try:
+        out["mathematica"] = to_mathematica(cmi)
+    except Exception:
+        pass
     if graph.expand:
         try:
             two = cmi.two_term().simplify("display")
@@ -211,6 +239,16 @@ def _compute(graph: GraphIn) -> dict[str, Any]:
                 and _values_match(cmi, _with_terms(cmi, cap))
             ):
                 out["latex_capacity"] = _render_terms(cmi, cap)
+            # Mathematica forms of the same (verified) two-term / capacity logdets.
+            # Nested guard so a printing failure never loses the verified LaTeX.
+            try:
+                out["mathematica_expanded"] = to_mathematica(
+                    _with_terms(cmi, two.logdet_terms)
+                )
+                if "latex_capacity" in out:
+                    out["mathematica_capacity"] = to_mathematica(_with_terms(cmi, cap))
+            except Exception:
+                pass
         except Exception:
             # fall back to the cleaned 3-term rendering (its own guard inside)
             out["latex_expanded"] = _expanded_latex(cmi)
@@ -221,11 +259,7 @@ def _compute(graph: GraphIn) -> dict[str, Any]:
         if H is None:
             raise ComputeError(400, "The edge to differentiate is not in the graph.")
         G = cmi.wirtinger_grad(H)
-        v = sp.latex(H)
-        out["gradient"] = {
-            "var": v,
-            "latex": rf"\frac{{\partial I}}{{\partial {v}^{{*}}}} = {sp.latex(G)}",
-        }
+        out["gradient"] = _gradient_payload(G, H)
 
     if graph.grad_node is not None:
         F = precoders.get(graph.grad_node)
@@ -236,11 +270,7 @@ def _compute(graph: GraphIn) -> dict[str, Any]:
                 "does not appear in the expression); ∂I/∂F* is undefined.",
             )
         G = cmi.wirtinger_grad(F)
-        v = sp.latex(F)
-        out["gradient"] = {
-            "var": v,
-            "latex": rf"\frac{{\partial I}}{{\partial {v}^{{*}}}} = {sp.latex(G)}",
-        }
+        out["gradient"] = _gradient_payload(G, F)
 
     if graph.lmmse:
         if len(A) != 1:
@@ -263,6 +293,12 @@ def _compute(graph: GraphIn) -> dict[str, Any]:
                     "W": rf"W = {sp.latex(W)}",
                     "E": rf"E = \Sigma_{{{a}\mid {ob}}} = {sp.latex(E)}",
                 }
+                # Mathematica forms of the same (verified) W / E matrices.
+                try:
+                    out["lmmse"]["W_mathematica"] = "W = " + to_mathematica(W)
+                    out["lmmse"]["E_mathematica"] = "E = " + to_mathematica(E)
+                except Exception:
+                    pass
             except Exception as exc:
                 out["lmmse"] = {"note": f"LMMSE derivation failed: {exc}"}
 

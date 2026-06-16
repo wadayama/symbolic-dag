@@ -60,6 +60,14 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 #results h2:first-child { margin-top: 0; }
 
+.block-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 18px 0 6px;
+}
+#out .block-head:first-of-type { margin-top: 0; }
+.block-head h2 { flex: 1; min-width: 0; margin: 0; }
+.copy-block { flex: none; padding: 3px 10px; font-size: 12px; }
+
 .status { font-size: 13px; color: #6c7a89; line-height: 1.7; }
 .status.error { color: var(--col-A); font-weight: bold; }
 .status.busy { color: #f39c12; }
@@ -80,6 +88,10 @@ main { flex: 1; display: flex; min-height: 0; }
 .badge.fail { background: var(--col-A); }
 
 .code-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+#format-controls {
+  margin-bottom: 12px; padding-bottom: 10px;
+  border-bottom: 1px solid #e0e4e8;
+}
 .code-controls .codelvl.active {
   background: #2c3e50; color: #fff; border-color: #2c3e50;
 }

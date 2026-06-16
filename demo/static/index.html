@@ -47,21 +47,41 @@
       then select that node and compute to see the precoder gradient ∂I/∂F*.
     </p>
     <section id="out" hidden>
-      <h2>Model</h2>
+      <div class="code-controls" id="format-controls">
+        <span class="hint">Output format:</span>
+        <button id="btn-fmt-rendered" class="codelvl active">LaTeX</button>
+        <button id="btn-fmt-math" class="codelvl">Mathematica</button>
+      </div>
+      <div class="block-head">
+        <h2>Model</h2>
+        <button class="copy-block" data-copy="model" title="Copy this block in the selected format">Copy</button>
+      </div>
       <div id="model" class="math-block"></div>
-      <h2>Conditional mutual information</h2>
+      <div class="block-head">
+        <h2>Conditional mutual information</h2>
+        <button class="copy-block" data-copy="cmi" title="Copy this block in the selected format">Copy</button>
+      </div>
       <div id="cmi" class="math-block"></div>
       <div id="badges"></div>
       <div id="expanded-wrap" hidden>
-        <h2>Expanded form</h2>
+        <div class="block-head">
+          <h2>Expanded form</h2>
+          <button class="copy-block" data-copy="expanded" title="Copy this block in the selected format">Copy</button>
+        </div>
         <div id="expanded" class="math-block scroll"></div>
       </div>
       <div id="grad-wrap" hidden>
-        <h2>Wirtinger gradient</h2>
+        <div class="block-head">
+          <h2>Wirtinger gradient</h2>
+          <button class="copy-block" data-copy="grad" title="Copy this block in the selected format">Copy</button>
+        </div>
         <div id="grad" class="math-block scroll"></div>
       </div>
       <div id="lmmse-wrap" hidden>
-        <h2>LMMSE estimation — Wiener filter W and error covariance E (estimating A from B, C)</h2>
+        <div class="block-head">
+          <h2>LMMSE estimation — Wiener filter W and error covariance E (estimating A from B, C)</h2>
+          <button class="copy-block" data-copy="lmmse" title="Copy this block in the selected format">Copy</button>
+        </div>
         <div id="lmmse" class="math-block scroll"></div>
       </div>
       <div id="code-wrap" hidden>

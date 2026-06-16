@@ -41,6 +41,8 @@ PyTorch is bundled).
 | Wirtinger gradient (precoder) | **With a precoded node selected**, compute → shows ∂I/∂F* (no KKT display in this demo) |
 | LMMSE estimation | Check "Show LMMSE (W / E)" → shows the Wiener filter `W` estimating A (a single node) from B and C, and the error covariance `E = Σ_{A\|B,C}`. E is exactly the second term of the two-term CMI form (the bridge between information and estimation error) |
 | Export code | "Export code" emits runnable `symbolic-dag` source for the drawn DAG, with a **High-level (builder)** / **Low-level (functional)** toggle and a Copy button. Use the GUI as a DAG builder, then paste the code into a script/notebook |
+| Output format | A **LaTeX / Mathematica** toggle at the top of the results panel selects the format of the computed results (Model, CMI, Wirtinger gradient, expanded form, LMMSE). LaTeX is shown rendered as math; Mathematica is shown as Wolfram Language source. Switching is instant (no recompute) |
+| Copy a result | Each result block has its own **Copy** button (in the block heading) that copies just that block in the currently-selected format — the **LaTeX source** (for a manuscript) or the **Wolfram Language** (for Mathematica). Pick the format once, then copy the CMI, the gradient, etc. individually |
 
 - An in-degree-0 node is automatically a source (covariance `Σ_name`, drawn as a
   rounded rectangle). Every other node is `V = Σ_p H_{p→child} V_p + N_child`
@@ -131,3 +133,12 @@ form), `independent` (symbolic d-separation proof from the rewrite engine),
 `lmmse.E` (when `lmmse: true`; `lmmse.note` if A has more than one node),
 `check.passed` / `check.max_abs_err`. Include `lmmse: true` in the request to
 enable it.
+
+Each LaTeX result also ships a **Mathematica / Wolfram Language** sibling for the
+front-end format toggle: `mathematica` (CMI), `gradient.mathematica`,
+`mathematica_expanded` / `mathematica_capacity`, and `lmmse.W_mathematica` /
+`lmmse.E_mathematica`. These are deterministic prints (via the library's
+`to_mathematica`) of the *same* sympy expressions whose LaTeX/value is verified,
+so they inherit that verification; each is best-effort (omitted if printing
+fails, in which case the UI falls back to the LaTeX source). The LaTeX-source
+view reuses the existing `latex` strings — no extra field.
